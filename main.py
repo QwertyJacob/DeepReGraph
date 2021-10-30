@@ -257,7 +257,6 @@ def get_primitive_clusters(link_ds, ccre_ds):
     prim_gene_ds = gene_ds.join(primitive_ge_clustered_ds)['primitive_cluster'].reset_index()
 
     ccre_primitive_clusters_path = reports_path + 'cCRE Clustering/'
-    ccre_kmeans_ds = pd.read_csv(ccre_primitive_clusters_path + 'variable_k/kmeans_clustered_cCREs_8.csv')
     ccre_agglomerative_ds = pd.read_csv(ccre_primitive_clusters_path + 'variable_k/agglomerative_clust_cCRE_8.csv')
     prim_ccre_ds = ccre_ds.set_index('cCRE_ID').join(ccre_agglomerative_ds.set_index('cCRE_ID'))[['cluster']]
     prim_ccre_ds.columns = ['primitive_cluster']
@@ -552,6 +551,7 @@ class AdaGAE(torch.nn.Module):
                 n_neighbors=n_neighbors,
                 min_dist=min_dist
             ).fit_transform(cpu_embedding)
+
             le = LabelEncoder()
             labels = le.fit_transform(prediction)
             for cluster in le.classes_:
@@ -568,6 +568,23 @@ class AdaGAE(torch.nn.Module):
             plt.legend()
             plt.show()
 
+            classes = ['genes', 'ccres']
+            class_labels = np.array([classes[0]] * self.ge_count + [classes[1]] * self.ccre_count)
+
+            for idx, elem_class in enumerate(classes):
+                cluster_points = _safe_indexing(umap_embedding, class_labels == elem_class)
+                cluster_marker = markers[idx % len(markers)]
+                cluster_color = colors[idx % len(colors)]
+                cluster_marker_size = sizes[idx % len(sizes)]
+                plt.scatter(cluster_points[:, 0],
+                            cluster_points[:, 1],
+                            marker=cluster_marker,
+                            color=cluster_color,
+                            label=elem_class,
+                            s=cluster_marker_size)
+            plt.legend()
+            plt.show()
+
     def visual_eval(self, n_neighbors=30, min_dist=0):
 
         embedding = self.embedding.detach().cpu().numpy()
@@ -576,15 +593,15 @@ class AdaGAE(torch.nn.Module):
         ch_score, ge_ch_score_raw, ccre_ch_score_raw = self.cal_clustering_metric(embedding, prediction)
         print('EVAL ch_score: %5.4f, ge_raw_ch_score: %5.4f, ccre_raw_ch_score: %5.4f' % (
         ch_score, ge_ch_score_raw, ccre_ch_score_raw))
-        class_label = np.array(['genes'] * 2087 + ['ccres'] * 8585)
+        class_label = np.array(['genes'] * self.ge_count + ['ccres'] * self.ccre_count)
         mapper = umap.UMAP(
             n_neighbors=n_neighbors,
             min_dist=min_dist
         ).fit(embedding)
         umap.plot.points(mapper, width=1500, height=1500, labels=prediction)
         umap.plot.points(mapper, width=1500, height=1500, labels=class_label)
-        primitive_clusters = get_primitive_clusters()
-        umap.plot.points(mapper, width=1500, height=1500, labels=primitive_clusters)
+        #primitive_clusters = get_primitive_clusters()
+        #umap.plot.points(mapper, width=1500, height=1500, labels=primitive_clusters)
 
         return mapper, prediction
 
@@ -597,14 +614,14 @@ class AdaGAE(torch.nn.Module):
 genomic_A = 1
 genomic_B = 1
 genomic_C = 3e4
-genes_to_pick = 1000
+genes_to_pick = 20
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 max_iter=50
 max_epoch=120
 inc_neighbors = 5
 learning_rate = 5*10**-3
 update_sparsity = True
-neighbors = 120
+neighbors = 20
 num_clusters = 20
 lam = 4.0
 add_self_loops = True
