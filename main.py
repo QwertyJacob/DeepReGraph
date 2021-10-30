@@ -1,5 +1,10 @@
-import torch
 from tqdm import tqdm as tqdm
+datapath = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\GE_Datasets\\'
+
+reports_path = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\RL_developmental_studies\\Reports\\'
+
+
+import torch
 import cProfile
 import pstats
 from functools import wraps
@@ -18,8 +23,9 @@ import matplotlib.pyplot as plt
 
 
 
-#PARAMS#
-
+######
+### SOME CONSTATNS
+######
 
 plt.rcParams["figure.figsize"] = (10, 10)
 
@@ -28,14 +34,6 @@ markers = ["$f$", "s", "o", "v", "^", "<", ">", "p", "$L$", "x"]
 colors = ['r', 'g', 'b', 'c', 'm', 'y', 'k', 'aquamarine', 'tab:gray', 'xkcd:sky blue']
 sizes = [32, 36, 39, 34, 37, 38, 32, 33, 35, 37]
 
-
-genomic_A = 1
-genomic_B = 1e5
-genomic_C = 1
-
-datapath = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\GE_Datasets\\'
-
-genes_to_pick = 1000
 
 #######################
 # HELPER FUNCTIONS#####
@@ -135,11 +133,11 @@ def distance(X, Y, square=True):
 def cal_weights_via_CAN(X,
                         num_neighbors,
                         gene_count,
-                        links=0,
+                        links=None,
                         device='cpu',
                         regularized_distance=True,
                         CCRE_dist_reg_factor=7.5,
-                        ):
+                        add_self_loops=False):
     """
     Solve Problem: Clustering-with-Adaptive-Neighbors(CAN)
     :param X: d * n
@@ -149,8 +147,8 @@ def cal_weights_via_CAN(X,
     """
     size = X.shape[1]
 
-    # We have notice a difference betweeen the distributions of same-class distances.
-    # (see the report)
+    # We have notice a difference between the distributions of same-class distances.
+    # (see the report C:\Users\Jesus Cevallos\odrive\DIAG Drive\RL_developmental_studies\Next Steps.docx)
     if regularized_distance:
         distances = distance(X, X)
         distances[gene_count:, gene_count:] = distances[gene_count:, gene_count:] / CCRE_dist_reg_factor
@@ -187,14 +185,17 @@ def cal_weights_via_CAN(X,
     # k sparse graph being based on node divergences and simmilarities,
     # we add weight to some points of the connectivity distribution being based
     # on the explicit graph information.
-    if links != 0:
+
+    if links is not None:
         links = torch.Tensor(links).to(device)
         # If we add the expliciit graph information, then we
         # add self-loops. (the generative model doesnt model them)
-        # weights += torch.eye(size).to(device)
+        if add_self_loops:
+          weights += torch.eye(size).to(device)*torch.max(links)
         weights += links
         # row-wise normalization.
         weights /= weights.sum(dim=1).reshape([size, 1])
+
     torch.cuda.empty_cache()
     # UN-symmetric connectivity distribution
     raw_weights = weights
@@ -248,23 +249,23 @@ def get_hybrid_genomic_distance_adjacency_matrix(link_ds, a, b, c):
     return dense_A
 
 def get_primitive_clusters(link_ds, ccre_ds):
-    reports_path = '/content/DIAGdrive/MyDrive/RL_developmental_studies/Reports/GE clustering/'
-    kmeans_ds = pd.read_csv(reports_path + 'variable_k/kmeans_clustered_genes_5.csv')
+    gene_primitive_clusters_path = reports_path + 'GE clustering/'
+    kmeans_ds = pd.read_csv(gene_primitive_clusters_path + 'variable_k/kmeans_clustered_genes_5.csv')
     primitive_ge_clustered_ds = kmeans_ds.set_index('EnsembleID').drop('Unnamed: 0', axis=1)
     primitive_ge_clustered_ds.columns = ['primitive_cluster']
     gene_ds = link_ds.reset_index().drop_duplicates('EnsembleID').set_index('EnsembleID')
     prim_gene_ds = gene_ds.join(primitive_ge_clustered_ds)['primitive_cluster'].reset_index()
 
-    reports_path = '/content/DIAGdrive/MyDrive/RL_developmental_studies/Reports/cCRE Clustering/'
-    ccre_kmeans_ds = pd.read_csv(reports_path + 'variable_k/kmeans_clustered_cCREs_8.csv')
-    ccre_agglomerative_ds = pd.read_csv(reports_path + 'variable_k/agglomerative_clust_cCRE_8.csv')
+    ccre_primitive_clusters_path = reports_path + 'cCRE Clustering/'
+    ccre_kmeans_ds = pd.read_csv(ccre_primitive_clusters_path + 'variable_k/kmeans_clustered_cCREs_8.csv')
+    ccre_agglomerative_ds = pd.read_csv(ccre_primitive_clusters_path + 'variable_k/agglomerative_clust_cCRE_8.csv')
     prim_ccre_ds = ccre_ds.set_index('cCRE_ID').join(ccre_agglomerative_ds.set_index('cCRE_ID'))[['cluster']]
     prim_ccre_ds.columns = ['primitive_cluster']
     prim_ccre_ds.primitive_cluster += 5
     return np.array(prim_gene_ds.primitive_cluster.to_list() + prim_ccre_ds.primitive_cluster.to_list())
 
 
-def load_data(datapath, num_of_genes):
+def load_data(datapath, num_of_genes=0):
     var_log_ge_ds = pd.read_csv(datapath + 'var_log_fpkm_GE_ds')
 
     X = var_log_ge_ds[['Heart_E10_5', 'Heart_E11_5', 'Heart_E12_5',
@@ -289,7 +290,11 @@ def load_data(datapath, num_of_genes):
     link_ds['EnsembleID'] = link_ds['EnsembleID'].apply(lambda x: x.strip())
     link_ds['cCRE_ID'] = link_ds['cCRE_ID'].apply(lambda x: x.strip())
 
-    var_ge_list = working_genes_ds['EnsembleID'].tolist()[:num_of_genes]
+    if num_of_genes==0:
+        var_ge_list = working_genes_ds['EnsembleID'].tolist()
+    else:
+        var_ge_list = working_genes_ds['EnsembleID'].tolist()[:num_of_genes]
+
     link_ds = link_ds[link_ds['EnsembleID'].isin(var_ge_list)]
     link_ds = link_ds[link_ds['cCRE_ID'].isin(ccre_ds['cCRE_ID'].tolist())]
     link_ds = link_ds.set_index('EnsembleID').join(
@@ -301,17 +306,17 @@ def load_data(datapath, num_of_genes):
 
     return link_ds, ccre_ds
 
-
-
+#####
+# ADAGAE OBJECT
+########
 
 class AdaGAE(torch.nn.Module):
 
-    def __init__(self, X, ge_count, ccre_count, num_clusters, layers=None,
+    def __init__(self, X, ge_count, ccre_count, num_clusters, datapath, layers=None,
                  lam=4.0, num_neighbors=150, learning_rate=10 ** -3,
                  max_iter=50, max_epoch=10, update=True,
-                 inc_neighbors=5, links=0, device=None,
+                 inc_neighbors=5, links=None, device=None,
                  pre_trained=False,
-                 datapath='C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\GE_Datasets\\',
                  pre_trained_state_dict='models/combined_adagae_z12_initk150_150epochs',
                  pre_computed_embedding='models/combined_adagae_z12_initk150_150epochs_embedding',
                  regularized_distance=True,
@@ -585,12 +590,64 @@ class AdaGAE(torch.nn.Module):
 
 
 
+###########
+## HYPER-PARAMS
+###########
+
+genomic_A = 1
+genomic_B = 1
+genomic_C = 3e4
+genes_to_pick = 1000
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+max_iter=50
+max_epoch=120
+inc_neighbors = 5
+learning_rate = 5*10**-3
+update_sparsity = True
+neighbors = 120
+num_clusters = 20
+lam = 4.0
+add_self_loops = True
+
+bounded_sparsity = False
+regularized_distance = True
+CCRE_dist_reg_factor = 10.5
+
+
 
 if __name__ == '__main__':
-
 
     link_ds, ccre_ds = load_data(datapath, genes_to_pick)
 
     X, ge_count, ccre_count = get_hybrid_feature_matrix(link_ds, ccre_ds)
 
     links = get_hybrid_genomic_distance_adjacency_matrix(link_ds, genomic_A, genomic_B, genomic_C)
+
+    X /= torch.max(X)
+    X = torch.Tensor(X).to(device)
+    input_dim = X.shape[1]
+    layers = [input_dim, 24 ,12]
+
+    print('-----lambda={}, neighbors={}, num_clusters={}, gen_A={}, gen_B={}, max_iter={}, max_epoch={}'
+          .format(lam, neighbors, num_clusters, genomic_A, genomic_B, max_iter, max_epoch))
+    gae = AdaGAE(X,
+                 ge_count,
+                 ccre_count,
+                 num_clusters,
+                 datapath,
+                 layers=layers,
+                 num_neighbors=neighbors,
+                 lam=lam,
+                 update=update_sparsity,
+                 learning_rate=learning_rate,
+                 links=links,
+                 inc_neighbors=inc_neighbors,
+                 max_iter=max_iter,
+                 max_epoch=max_epoch,
+                 device=device,
+                 pre_trained=False,
+                 regularized_distance=regularized_distance,
+                 CCRE_dist_reg_factor=CCRE_dist_reg_factor,
+                 bounded_sparsity=bounded_sparsity,
+                 add_self_loops=add_self_loops)
+    gae.run()
