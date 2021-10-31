@@ -133,6 +133,7 @@ def distance(X, Y, square=True):
 def cal_weights_via_CAN(X,
                         num_neighbors,
                         gene_count,
+                        genomic_A,
                         links=None,
                         device='cpu',
                         regularized_distance=True,
@@ -188,10 +189,10 @@ def cal_weights_via_CAN(X,
 
     if links is not None:
         links = torch.Tensor(links).to(device)
-        # If we add the expliciit graph information, then we
+        # If we add the explicit graph information, then we
         # add self-loops. (the generative model doesnt model them)
         if add_self_loops:
-          weights += torch.eye(size).to(device)*torch.max(links)
+          weights += torch.eye(size).to(device)*genomic_A
         weights += links
         # row-wise normalization.
         weights /= weights.sum(dim=1).reshape([size, 1])
@@ -206,7 +207,10 @@ def cal_weights_via_CAN(X,
     return weights, raw_weights
 
 
-def get_Laplacian_from_weights(weights):
+def get_normalized_adjacency_matrix(weights):
+    #We don't create self loops with 1 (nor with any calue)
+    # because we want the embeddings to adaptively learn
+    #the self-loop weights.
     # W = torch.eye(weights.shape[0]).cuda() + weights
     # degree = torch.sum(W, dim=1).pow(-0.5)
     # return (W * degree).t()*degree
@@ -311,7 +315,7 @@ def load_data(datapath, num_of_genes=0):
 
 class AdaGAE(torch.nn.Module):
 
-    def __init__(self, X, ge_count, ccre_count, num_clusters, datapath, layers=None,
+    def __init__(self, X, ge_count, ccre_count, num_clusters, genomic_A, datapath, layers=None,
                  lam=4.0, num_neighbors=150, learning_rate=10 ** -3,
                  max_iter=50, max_epoch=10, update=True,
                  inc_neighbors=5, links=None, device=None,
@@ -347,6 +351,8 @@ class AdaGAE(torch.nn.Module):
         self.datapath = datapath
         self.pre_trained_state_dict = pre_trained_state_dict
         self.pre_computed_embedding = pre_computed_embedding
+        self.genomic_A = genomic_A
+
         if self.bounded_sparsity:
             self.max_neighbors = self.cal_max_neighbors()
         else:
@@ -396,6 +402,7 @@ class AdaGAE(torch.nn.Module):
         weights, raw_weights = cal_weights_via_CAN(self.embedding.t(),
                                                    self.num_neighbors,
                                                    self.ge_count,
+                                                   self.genomic_A,
                                                    self.links,
                                                    self.device,
                                                    self.regularized_distance,
@@ -405,7 +412,7 @@ class AdaGAE(torch.nn.Module):
         # threshold = 0.5
         # connections = (recons > threshold).type(torch.IntTensor).cuda()
         # weights = weights * connections
-        Laplacian = get_Laplacian_from_weights(weights)
+        Laplacian = get_normalized_adjacency_matrix(weights)
         # Laplacian = utils.get_Laplacian_from_weights(utils.noise(weights))
         return weights, Laplacian, raw_weights
 
@@ -426,9 +433,9 @@ class AdaGAE(torch.nn.Module):
         # loss += 10**-3 * (torch.mean(self.W1.abs()) + torch.mean(self.W2.abs()))
 
         degree = weights.sum(dim=1)
-        L = torch.diag(degree) - weights
+        laplacian = torch.diag(degree) - weights
         # This is exactly equation 11 in the paper. notice that torch.trace return the sum of the elements in the diagonal of the input matrix.
-        loss += self.lam * torch.trace(self.embedding.t().matmul(L).matmul(self.embedding)) / size
+        loss += self.lam * torch.trace(self.embedding.t().matmul(laplacian).matmul(self.embedding)) / size
         return loss
 
     def cal_clustering_metric(self, feature_matrix, predicted_labels):
@@ -457,6 +464,7 @@ class AdaGAE(torch.nn.Module):
             weights, raw_weights = cal_weights_via_CAN(self.embedding.t(),
                                                        self.num_neighbors,
                                                        self.ge_count,
+                                                       self.genomic_A,
                                                        self.links,
                                                        self.device,
                                                        self.regularized_distance,
@@ -466,6 +474,7 @@ class AdaGAE(torch.nn.Module):
             weights, raw_weights = cal_weights_via_CAN(self.X.t(),
                                                        self.num_neighbors,
                                                        self.ge_count,
+                                                       self.genomic_A,
                                                        self.links,
                                                        self.device,
                                                        self.regularized_distance,
@@ -473,7 +482,7 @@ class AdaGAE(torch.nn.Module):
                                                        self.add_self_loops)
 
         # they row-wise normalize the weigths computed into the laplacian (A hat)
-        Laplacian = get_Laplacian_from_weights(weights)
+        Laplacian = get_normalized_adjacency_matrix(weights)
         Laplacian = Laplacian.to_sparse()
         torch.cuda.empty_cache()
 
@@ -611,7 +620,7 @@ class AdaGAE(torch.nn.Module):
 ## HYPER-PARAMS
 ###########
 
-genomic_A = 1
+genomic_A = 0.5
 genomic_B = 1
 genomic_C = 3e4
 genes_to_pick = 20
@@ -651,6 +660,7 @@ if __name__ == '__main__':
                  ge_count,
                  ccre_count,
                  num_clusters,
+                 genomic_A,
                  datapath,
                  layers=layers,
                  num_neighbors=neighbors,
