@@ -133,12 +133,11 @@ def distance(X, Y, square=True):
 def cal_weights_via_CAN(X,
                         num_neighbors,
                         gene_count,
-                        genomic_A,
-                        links=None,
+                        links,
+                        genomic_C,
                         device='cpu',
                         regularized_distance=True,
-                        CCRE_dist_reg_factor=7.5,
-                        add_self_loops=False):
+                        CCRE_dist_reg_factor=7.5):
     """
     Solve Problem: Clustering-with-Adaptive-Neighbors(CAN)
     :param X: d * n
@@ -183,19 +182,22 @@ def cal_weights_via_CAN(X,
     weights = weights.relu().to(device)
 
     # now at this point, after computing the generative model of the
-    # k sparse graph being based on node divergences and simmilarities,
+    # k sparse graph being based on node divergences and similarities,
     # we add weight to some points of the connectivity distribution being based
     # on the explicit graph information.
 
-    if links is not None:
-        links = torch.Tensor(links).to(device)
-        # If we add the explicit graph information, then we
-        # add self-loops. (the generative model doesnt model them)
-        if add_self_loops:
-          weights += torch.eye(size).to(device)*genomic_A
-        weights += links
-        # row-wise normalization.
-        weights /= weights.sum(dim=1).reshape([size, 1])
+    # Notice that the link distance matrix has already self loop weight information
+    links = fast_genomic_distance_to_similarity(links,genomic_C)
+
+    # We know that, in the (quasi) simple dist_to_score model, range of link scores go from 0 to 1.
+    # We scale the link information to the p distribution.
+    links *= (torch.max(weights).item() * 1.5)
+
+    links = torch.Tensor(links).to(device)
+
+    weights += links
+    # row-wise normalization.
+    weights /= weights.sum(dim=1).reshape([size, 1])
 
     torch.cuda.empty_cache()
     # UN-symmetric connectivity distribution
@@ -222,14 +224,14 @@ def get_weight_initial(shape):
     ini = torch.rand(shape) * 2 * bound - bound
     return torch.nn.Parameter(ini, requires_grad=True)
 
-def genomic_distance_to_similarity(distance, a, b, c):
+def fast_genomic_distance_to_similarity(link_matrix, c):
     '''
     see https://www.desmos.com/calculator/kx3essm3ct
     TODO play aroun'
     '''
-    return a / (((distance / c) ** 2) + b)
+    return 1 / (((link_matrix / c) ** 8) + 1)
 
-def get_hybrid_genomic_distance_adjacency_matrix(link_ds, a, b, c):
+def get_genomic_distance_matrix(link_ds):
     genes = link_ds.index.unique().tolist()
     ccres = link_ds.cCRE_ID.unique().tolist()
     entity_number = len(genes + ccres)
@@ -239,18 +241,18 @@ def get_hybrid_genomic_distance_adjacency_matrix(link_ds, a, b, c):
     entities_df.set_index('EntityID', inplace=True)
 
     dense_A = np.zeros((entity_number, entity_number))
-
+    dense_A.fill(np.inf)
+    np.fill_diagonal(dense_A, 0)
     print('processing genomic distances...')
-    simmilarities = []
+
     for index, row in tqdm(link_ds.reset_index().iterrows()):
         gene_idx = entities_df.loc[row.EnsembleID][0]
         ccre_idx = entities_df.loc[row.cCRE_ID][0]
-        simmilarity = genomic_distance_to_similarity(row.Distance, a, b, c)
-        simmilarities.append(simmilarity)
-        dense_A[gene_idx, ccre_idx] = simmilarity
-        dense_A[ccre_idx, gene_idx] = simmilarity
+        dense_A[gene_idx, ccre_idx] = row.Distance
+        dense_A[ccre_idx, gene_idx] = row.Distance
 
     return dense_A
+
 
 def get_primitive_clusters(link_ds, ccre_ds):
     gene_primitive_clusters_path = reports_path + 'GE clustering/'
@@ -315,7 +317,7 @@ def load_data(datapath, num_of_genes=0):
 
 class AdaGAE(torch.nn.Module):
 
-    def __init__(self, X, ge_count, ccre_count, num_clusters, genomic_A, datapath, layers=None,
+    def __init__(self, X, ge_count, ccre_count, genomic_C, num_clusters, datapath, layers=None,
                  lam=4.0, num_neighbors=150, learning_rate=10 ** -3,
                  max_iter=50, max_epoch=10, update=True,
                  inc_neighbors=5, links=None, device=None,
@@ -324,8 +326,7 @@ class AdaGAE(torch.nn.Module):
                  pre_computed_embedding='models/combined_adagae_z12_initk150_150epochs_embedding',
                  regularized_distance=True,
                  CCRE_dist_reg_factor=7.5,
-                 bounded_sparsity=True,
-                 add_self_loops=False):
+                 bounded_sparsity=True):
 
         super(AdaGAE, self).__init__()
 
@@ -351,7 +352,7 @@ class AdaGAE(torch.nn.Module):
         self.datapath = datapath
         self.pre_trained_state_dict = pre_trained_state_dict
         self.pre_computed_embedding = pre_computed_embedding
-        self.genomic_A = genomic_A
+        self.genomic_C = genomic_C
 
         if self.bounded_sparsity:
             self.max_neighbors = self.cal_max_neighbors()
@@ -361,7 +362,6 @@ class AdaGAE(torch.nn.Module):
         if self.update: print('Neighbors will increment up to ', self.max_neighbors)
 
         self.links = links
-        self.add_self_loops = add_self_loops
         self.device = device
         self.embedding = None
         self.pre_trained = pre_trained
@@ -402,8 +402,8 @@ class AdaGAE(torch.nn.Module):
         weights, raw_weights = cal_weights_via_CAN(self.embedding.t(),
                                                    self.num_neighbors,
                                                    self.ge_count,
-                                                   self.genomic_A,
                                                    self.links,
+                                                   self.genomic_C,
                                                    self.device,
                                                    self.regularized_distance,
                                                    self.CCRE_dist_reg_factor)  # first
@@ -464,22 +464,20 @@ class AdaGAE(torch.nn.Module):
             weights, raw_weights = cal_weights_via_CAN(self.embedding.t(),
                                                        self.num_neighbors,
                                                        self.ge_count,
-                                                       self.genomic_A,
                                                        self.links,
+                                                       self.genomic_C,
                                                        self.device,
                                                        self.regularized_distance,
-                                                       self.CCRE_dist_reg_factor,
-                                                       self.add_self_loops)
+                                                       self.CCRE_dist_reg_factor)
         else:
             weights, raw_weights = cal_weights_via_CAN(self.X.t(),
                                                        self.num_neighbors,
                                                        self.ge_count,
-                                                       self.genomic_A,
                                                        self.links,
+                                                       self.genomic_C,
                                                        self.device,
                                                        self.regularized_distance,
-                                                       self.CCRE_dist_reg_factor,
-                                                       self.add_self_loops)
+                                                       self.CCRE_dist_reg_factor)
 
         # they row-wise normalize the weigths computed into the laplacian (A hat)
         Laplacian = get_normalized_adjacency_matrix(weights)
@@ -561,6 +559,8 @@ class AdaGAE(torch.nn.Module):
                 min_dist=min_dist
             ).fit_transform(cpu_embedding)
 
+            '''
+            By now, we done care about cluster coloured plots.
             le = LabelEncoder()
             labels = le.fit_transform(prediction)
             for cluster in le.classes_:
@@ -576,6 +576,7 @@ class AdaGAE(torch.nn.Module):
                             s=cluster_marker_size)
             plt.legend()
             plt.show()
+            '''
 
             classes = ['genes', 'ccres']
             class_labels = np.array([classes[0]] * self.ge_count + [classes[1]] * self.ccre_count)
@@ -620,10 +621,8 @@ class AdaGAE(torch.nn.Module):
 ## HYPER-PARAMS
 ###########
 
-genomic_A = 0.5
-genomic_B = 1
 genomic_C = 3e4
-genes_to_pick = 20
+genes_to_pick = 200
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 max_iter=50
 max_epoch=120
@@ -633,7 +632,6 @@ update_sparsity = True
 neighbors = 20
 num_clusters = 20
 lam = 4.0
-add_self_loops = True
 
 bounded_sparsity = False
 regularized_distance = True
@@ -647,20 +645,20 @@ if __name__ == '__main__':
 
     X, ge_count, ccre_count = get_hybrid_feature_matrix(link_ds, ccre_ds)
 
-    links = get_hybrid_genomic_distance_adjacency_matrix(link_ds, genomic_A, genomic_B, genomic_C)
+    links = get_genomic_distance_matrix(link_ds)
 
     X /= torch.max(X)
     X = torch.Tensor(X).to(device)
     input_dim = X.shape[1]
     layers = [input_dim, 24 ,12]
 
-    print('-----lambda={}, neighbors={}, num_clusters={}, gen_A={}, gen_B={}, max_iter={}, max_epoch={}'
-          .format(lam, neighbors, num_clusters, genomic_A, genomic_B, max_iter, max_epoch))
+    print('-----lambda={}, neighbors={}, num_clusters={}, gen_C={}, max_iter={}, max_epoch={}'
+          .format(lam, neighbors, num_clusters, genomic_C, max_iter, max_epoch))
     gae = AdaGAE(X,
                  ge_count,
                  ccre_count,
+                 genomic_C,
                  num_clusters,
-                 genomic_A,
                  datapath,
                  layers=layers,
                  num_neighbors=neighbors,
@@ -675,6 +673,5 @@ if __name__ == '__main__':
                  pre_trained=False,
                  regularized_distance=regularized_distance,
                  CCRE_dist_reg_factor=CCRE_dist_reg_factor,
-                 bounded_sparsity=bounded_sparsity,
-                 add_self_loops=add_self_loops)
+                 bounded_sparsity=bounded_sparsity)
     gae.run()
