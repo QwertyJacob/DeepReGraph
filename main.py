@@ -515,8 +515,7 @@ class AdaGAE(torch.nn.Module):
                 # weights, Laplacian, raw_weights = self.update_graph_entropy(recons)
 
                 if (epoch > 1) and (epoch % 10 == 0):
-                    visual = True
-                    self.clustering(weights, visual=visual)
+                    self.clustering()
 
                 self.num_neighbors += self.inc_neighbors
             else:
@@ -540,8 +539,7 @@ class AdaGAE(torch.nn.Module):
             mean_loss = sum(self.epoch_losses) / len(self.epoch_losses)
             print('epoch:%3d,' % epoch, 'loss: %6.5f' % mean_loss)
 
-    def clustering(self, weights, visual=False, n_neighbors=30, min_dist=0):
-
+    def clustering(self, visual=True, n_neighbors=30, min_dist=0):
 
         embedding = self.embedding.detach().cpu().numpy()
         km = KMeans(n_clusters=self.num_clusters).fit(embedding)
