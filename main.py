@@ -1,3 +1,33 @@
+#################
+#For Colab
+
+#from google.colab import drive
+#drive.mount('/content/DIAGdrive')
+#!pip install umap-learn[plot]
+
+#!wget https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip
+#!unzip ngrok-stable-linux-amd64.zip
+
+#import os
+#LOG_DIR = 'runs'
+#os.makedirs(LOG_DIR, exist_ok=True)
+#get_ipython().system_raw(
+#    'tensorboard --logdir {} --host 0.0.0.0 --port 6006 &'
+#    .format(LOG_DIR)
+#)
+
+#get_ipython().system_raw('./ngrok http 6006 &')
+
+#! curl -s http://localhost:4040/api/tunnels | python3 -c \
+#    "import sys, json; print(json.load(sys.stdin)['tunnels'][0]['public_url'])"
+
+
+#from tqdm.notebook import tqdm
+#datapath = "/content/DIAGdrive/MyDrive/GE_Datasets/"
+
+#reports_path= '/content/DIAGdrive/MyDrive/RL_developmental_studies/Reports/'
+#################
+
 from tqdm import tqdm as tqdm
 datapath = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\GE_Datasets\\'
 
@@ -5,6 +35,7 @@ reports_path = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\RL_developmental_
 
 
 import torch
+from torch.utils.tensorboard import SummaryWriter
 import cProfile
 import pstats
 from functools import wraps
@@ -12,7 +43,6 @@ import pandas as pd
 import numpy as np
 
 from sklearn.metrics import calinski_harabasz_score
-from sklearn.preprocessing import LabelEncoder
 from sklearn.cluster import KMeans
 from sklearn.utils import _safe_indexing
 
@@ -30,7 +60,7 @@ import matplotlib.pyplot as plt
 plt.rcParams["figure.figsize"] = (10, 10)
 
 # generate a list of markers and another of colors
-markers = ["$f$", "s", "o", "v", "^", "<", ">", "p", "$L$", "x"]
+markers = ["s", "o", "$f$",  "v", "^", "<", ">", "p", "$L$", "x"]
 colors = ['r', 'g', 'b', 'c', 'm', 'y', 'k', 'aquamarine', 'tab:gray', 'xkcd:sky blue']
 sizes = [32, 36, 39, 34, 37, 38, 32, 33, 35, 37]
 
@@ -317,7 +347,7 @@ def load_data(datapath, num_of_genes=0):
 
 class AdaGAE(torch.nn.Module):
 
-    def __init__(self, X, ge_count, ccre_count, genomic_C, num_clusters, datapath, layers=None,
+    def __init__(self, X, ge_count, ccre_count, genomic_C, num_clusters, datapath, tensorboard, layers=None,
                  lam=4.0, num_neighbors=150, learning_rate=10 ** -3,
                  max_iter=50, max_epoch=10, update=True,
                  inc_neighbors=5, links=None, device=None,
@@ -353,6 +383,7 @@ class AdaGAE(torch.nn.Module):
         self.pre_trained_state_dict = pre_trained_state_dict
         self.pre_computed_embedding = pre_computed_embedding
         self.genomic_C = genomic_C
+        self.tensorboard = tensorboard
 
         if self.bounded_sparsity:
             self.max_neighbors = self.cal_max_neighbors()
@@ -416,7 +447,7 @@ class AdaGAE(torch.nn.Module):
         # Laplacian = utils.get_Laplacian_from_weights(utils.noise(weights))
         return weights, Laplacian, raw_weights
 
-    def build_loss(self, recons, weights, raw_weights):
+    def build_loss(self, recons, weights, raw_weights, global_step):
 
         size = self.X.shape[0]
         loss = 0
@@ -428,6 +459,7 @@ class AdaGAE(torch.nn.Module):
         # In the paper they mention the minimization of the row-wise kl divergence.
         # here we know we have to compute the mean kl divergence for each point.
         loss = loss.mean()
+        self.tensorboard.add_scalar('KL_divergence', loss.item(), global_step)
         # loss += 10**-3 * (torch.mean(self.embedding.pow(2)))
         # loss += 10**-3 * (torch.mean(self.W1.pow(2)) + torch.mean(self.W2.pow(2)))
         # loss += 10**-3 * (torch.mean(self.W1.abs()) + torch.mean(self.W2.abs()))
@@ -435,7 +467,12 @@ class AdaGAE(torch.nn.Module):
         degree = weights.sum(dim=1)
         laplacian = torch.diag(degree) - weights
         # This is exactly equation 11 in the paper. notice that torch.trace return the sum of the elements in the diagonal of the input matrix.
-        loss += self.lam * torch.trace(self.embedding.t().matmul(laplacian).matmul(self.embedding)) / size
+        local_distance_preserving_loss = self.lam * torch.trace(self.embedding.t().matmul(laplacian).matmul(self.embedding)) / size
+        self.tensorboard.add_scalar('LocalDistPreservingPenalty', local_distance_preserving_loss.item(), global_step)
+
+        loss += local_distance_preserving_loss
+        self.tensorboard.add_scalar('Total_Loss', loss.item(), global_step)
+
         return loss
 
     def cal_clustering_metric(self, feature_matrix, predicted_labels):
@@ -495,7 +532,8 @@ class AdaGAE(torch.nn.Module):
                 optimizer.zero_grad()
                 # recons is the q ditribution.
                 recons = self(Laplacian)
-                loss = self.build_loss(recons, weights, raw_weights)
+                global_step = (epoch*self.max_iter)+i
+                loss = self.build_loss(recons, weights, raw_weights,global_step)
                 self.epoch_losses.append(loss.item())
                 weights = weights.cpu()
                 raw_weights = raw_weights.cpu()
@@ -575,7 +613,7 @@ class AdaGAE(torch.nn.Module):
 
             classes = ['genes', 'ccres']
             class_labels = np.array([classes[0]] * self.ge_count + [classes[1]] * self.ccre_count)
-
+            alphas = [1,0.3]
             for idx, elem_class in enumerate(classes):
                 cluster_points = _safe_indexing(umap_embedding, class_labels == elem_class)
                 cluster_marker = markers[idx % len(markers)]
@@ -586,9 +624,11 @@ class AdaGAE(torch.nn.Module):
                             marker=cluster_marker,
                             color=cluster_color,
                             label=elem_class,
+                            alpha=alphas[idx],
                             s=cluster_marker_size)
             plt.legend()
             plt.show()
+
 
     def visual_eval(self, n_neighbors=30, min_dist=0):
 
@@ -617,14 +657,14 @@ class AdaGAE(torch.nn.Module):
 ###########
 
 genomic_C = 3e4
-genes_to_pick = 200
+genes_to_pick = 20
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 max_iter=50
 max_epoch=120
-inc_neighbors = 5
+inc_neighbors = 1
 learning_rate = 5*10**-3
 update_sparsity = True
-neighbors = 20
+neighbors = 3
 num_clusters = 20
 lam = 4.0
 
@@ -635,6 +675,8 @@ CCRE_dist_reg_factor = 10.5
 
 
 if __name__ == '__main__':
+
+    tb = SummaryWriter()
 
     link_ds, ccre_ds = load_data(datapath, genes_to_pick)
 
@@ -655,6 +697,7 @@ if __name__ == '__main__':
                  genomic_C,
                  num_clusters,
                  datapath,
+                 tb,
                  layers=layers,
                  num_neighbors=neighbors,
                  lam=lam,
@@ -670,3 +713,5 @@ if __name__ == '__main__':
                  CCRE_dist_reg_factor=CCRE_dist_reg_factor,
                  bounded_sparsity=bounded_sparsity)
     gae.run()
+
+    #tb.close()
