@@ -34,6 +34,10 @@ datapath = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\GE_Datasets\\'
 reports_path = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\RL_developmental_studies\\Reports\\'
 
 
+
+##COPY TO NOTEBOOK FROM HERE!!!###
+
+
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import cProfile
@@ -49,8 +53,6 @@ from sklearn.utils import _safe_indexing
 import umap
 import umap.plot
 import matplotlib.pyplot as plt
-
-
 
 
 ######
