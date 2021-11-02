@@ -349,6 +349,8 @@ def load_data(datapath, num_of_genes=0):
 # ADAGAE OBJECT
 ########
 
+NUM_NEIGHBORS_LABEL: str = 'Sparsity'
+
 class AdaGAE(torch.nn.Module):
 
     def __init__(self, X, ge_count, ccre_count, genomic_C, num_clusters, datapath, layers=None,
@@ -431,8 +433,9 @@ class AdaGAE(torch.nn.Module):
         # return 1 / (distances + 1)
         # return torch.sigmoid(self.embedding.matmul(torch.t(self.embedding)))
 
-    def update_graph(self):
+    def update_graph(self, epoch):
         print('updating graph Laplacian with neighbors: ', self.num_neighbors)
+        tensorboard.add_scalar(NUM_NEIGHBORS_LABEL,self.num_neighbors, epoch*self.max_iter)
         weights, raw_weights = cal_weights_via_CAN(self.embedding.t(),
                                                    self.num_neighbors,
                                                    self.ge_count,
@@ -498,7 +501,7 @@ class AdaGAE(torch.nn.Module):
 
     @profile(output_file='profiling_adagae')
     def run(self):
-
+        tensorboard.add_scalar(NUM_NEIGHBORS_LABEL, self.num_neighbors, 0)
         if self.pre_trained:
             # weigths is A tilded, because is the symmetric modification of the p distribution which is in raw_weigths.
             weights, raw_weights = cal_weights_via_CAN(self.embedding.t(),
@@ -550,7 +553,7 @@ class AdaGAE(torch.nn.Module):
             # scio.savemat('results/embedding_{}.mat'.format(epoch), {'Embedding': self.embedding.cpu().detach().numpy()})
 
             if (not self.bounded_sparsity) or (self.num_neighbors < self.max_neighbors):
-                weights, Laplacian, raw_weights = self.update_graph()
+                weights, Laplacian, raw_weights = self.update_graph(epoch+1)
                 # weights, Laplacian, raw_weights = self.update_graph_entropy(recons)
 
                 if (epoch > 1) and (epoch % 10 == 0):
@@ -565,7 +568,7 @@ class AdaGAE(torch.nn.Module):
                 weights = weights.cpu()
                 raw_weights = raw_weights.cpu()
                 torch.cuda.empty_cache()
-                w, _, __ = self.update_graph()
+                w, _, __ = self.update_graph(epoch+1)
                 _, __ = (None, None)
                 torch.cuda.empty_cache()
                 # w, _, __ = self.update_graph_entropy(recons)
