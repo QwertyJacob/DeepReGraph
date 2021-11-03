@@ -348,8 +348,11 @@ NUM_NEIGHBORS_LABEL: str = 'NumNeighbors'
 class AdaGAE(torch.nn.Module):
 
 
-    def __init__(self, X, layers=None,
-                 init_sparsity=150, update=True, links=None, device=None,
+    def __init__(self, X,
+                 layers=None,
+                 init_sparsity=150,
+                 links=None,
+                 device=None,
                  pre_trained=False,
                  pre_trained_state_dict='models/combined_adagae_z12_initk150_150epochs',
                  pre_computed_embedding='models/combined_adagae_z12_initk150_150epochs_embedding'):
@@ -365,7 +368,6 @@ class AdaGAE(torch.nn.Module):
         self.embedding_dim = layers[-1]
         self.mid_dim = layers[1]
         self.input_dim = layers[0]
-        self.update = update
         self.pre_trained_state_dict = pre_trained_state_dict
         self.pre_computed_embedding = pre_computed_embedding
 
@@ -374,7 +376,7 @@ class AdaGAE(torch.nn.Module):
         else:
             self.max_neighbors = None
 
-        if self.update: print('Neighbors will increment up to ', self.max_neighbors)
+        print('Neighbors will increment up to ', self.max_neighbors)
 
         self.links = links
         self.device = device
@@ -390,8 +392,6 @@ class AdaGAE(torch.nn.Module):
             self.embedding = torch.load(datapath + self.pre_computed_embedding)
 
     def cal_max_neighbors(self):
-
-        if not self.update: return 0
         size = self.X.shape[0]
         return 2.0 * size / num_clusters
 
@@ -526,9 +526,8 @@ class AdaGAE(torch.nn.Module):
 
                 self.init_sparsity += sparsity_increment
             else:
-                if self.update:
-                    self.init_sparsity = int(self.max_neighbors)
-                    break
+                self.init_sparsity = int(self.max_neighbors)
+                break
                 recons = None
                 weights = weights.cpu()
                 raw_weights = raw_weights.cpu()
@@ -540,8 +539,7 @@ class AdaGAE(torch.nn.Module):
                 # self.clustering(w)
                 weights = weights.to(self.device)
                 raw_weights = raw_weights.to(self.device)
-                if self.update:
-                    break
+                break
 
             mean_loss = sum(self.epoch_losses) / len(self.epoch_losses)
             print('epoch:%3d,' % epoch, 'loss: %6.5f' % mean_loss)
@@ -634,7 +632,6 @@ max_iter=50
 max_epoch=120
 sparsity_increment = 1
 learning_rate = 5*10**-3
-update_sparsity = True
 init_sparsity = 3
 num_clusters = 20
 lam = 4.0
@@ -663,7 +660,6 @@ if __name__ == '__main__':
     gae = AdaGAE(X,
                  layers=layers,
                  init_sparsity=init_sparsity,
-                 update=update_sparsity,
                  links=links,
                  device=device,
                  pre_trained=False)
