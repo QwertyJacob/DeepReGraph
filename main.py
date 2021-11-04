@@ -1,40 +1,40 @@
 #################
-#For Colab
+# For Colab
 
-#from google.colab import drive
-#drive.mount('/content/DIAGdrive')
-#!pip install umap-learn[plot]
+# from google.colab import drive
+# drive.mount('/content/DIAGdrive')
+# !pip install umap-learn[plot]
 
-#!wget https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip
-#!unzip ngrok-stable-linux-amd64.zip
+# !wget https://bin.equinox.io/c/4VmDzA7iaHb/ngrok-stable-linux-amd64.zip
+# !unzip ngrok-stable-linux-amd64.zip
 
-#import os
-#LOG_DIR = '/content/DIAGdrive/MyDrive/GE_Datasets/official_logs/'
-#os.makedirs(LOG_DIR, exist_ok=True)
-#get_ipython().system_raw(
+# import os
+# LOG_DIR = '/content/DIAGdrive/MyDrive/GE_Datasets/official_logs/'
+# os.makedirs(LOG_DIR, exist_ok=True)
+# get_ipython().system_raw(
 #    'tensorboard --logdir {} --host 0.0.0.0 --port 6006 &'
 #    .format(LOG_DIR)
-#)
+# )
 
-#get_ipython().system_raw('./ngrok http 6006 &')
+# get_ipython().system_raw('./ngrok http 6006 &')
 
-#! curl -s http://localhost:4040/api/tunnels | python3 -c \
+# ! curl -s http://localhost:4040/api/tunnels | python3 -c \
 #    "import sys, json; print(json.load(sys.stdin)['tunnels'][0]['public_url'])"
 
 
-#from tqdm.notebook import tqdm
-#datapath = "/content/DIAGdrive/MyDrive/GE_Datasets/"
+# from tqdm.notebook import tqdm
+# datapath = "/content/DIAGdrive/MyDrive/GE_Datasets/"
 
-#reports_path= '/content/DIAGdrive/MyDrive/RL_developmental_studies/Reports/'
+# reports_path= '/content/DIAGdrive/MyDrive/RL_developmental_studies/Reports/'
 #################
 
 from tqdm import tqdm as tqdm
+
 datapath = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\GE_Datasets\\'
 
 reports_path = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\RL_developmental_studies\\Reports\\'
 
 LOG_DIR = 'local_runs/'
-
 
 ##COPY TO NOTEBOOK FROM HERE!!!###
 
@@ -55,7 +55,6 @@ import umap
 import umap.plot
 import matplotlib.pyplot as plt
 
-
 ######
 ### SOME CONSTATNS
 ######
@@ -63,7 +62,7 @@ import matplotlib.pyplot as plt
 plt.rcParams["figure.figsize"] = (10, 10)
 
 # generate a list of markers and another of colors
-markers = ["s", "o", "$f$",  "v", "^", "<", ">", "p", "$L$", "x"]
+markers = ["s", "o", "$f$", "v", "^", "<", ">", "p", "$L$", "x"]
 colors = ['r', 'g', 'b', 'c', 'm', 'y', 'k', 'aquamarine', 'tab:gray', 'xkcd:sky blue']
 sizes = [32, 36, 39, 34, 37, 38, 32, 33, 35, 37]
 
@@ -122,18 +121,21 @@ def profile(output_file=None, sort_by='cumulative', lines_to_print=None, strip_d
 
     return inner
 
-def get_hybrid_feature_matrix(link_ds, ccre_ds):
-  ge_values = link_ds.reset_index().drop_duplicates('EnsembleID')[['Heart_E10_5', 'Heart_E11_5', 'Heart_E12_5',
-        'Heart_E13_5', 'Heart_E14_5', 'Heart_E15_5', 'Heart_E16_5', 'Heart_P0']].values
-  ge_count = ge_values.shape[0]
-  ge_values_new = np.zeros((ge_values.shape[0],32))
-  ge_values_new[:,0:8]= ge_values
 
-  ccre_activity = ccre_ds.set_index('cCRE_ID').values
-  ccre_count = ccre_activity.shape[0]
-  ccre_activity_new = np.zeros((ccre_activity.shape[0],32))
-  ccre_activity_new[:,8:32] = ccre_activity
-  return torch.Tensor(np.concatenate((ge_values_new, ccre_activity_new))).cpu(), ge_count, ccre_count
+def get_hybrid_feature_matrix(link_ds, ccre_ds):
+    ge_values = link_ds.reset_index().drop_duplicates('EnsembleID')[['Heart_E10_5', 'Heart_E11_5', 'Heart_E12_5',
+                                                                     'Heart_E13_5', 'Heart_E14_5', 'Heart_E15_5',
+                                                                     'Heart_E16_5', 'Heart_P0']].values
+    ge_count = ge_values.shape[0]
+    ge_values_new = np.zeros((ge_values.shape[0], 32))
+    ge_values_new[:, 0:8] = ge_values
+
+    ccre_activity = ccre_ds.set_index('cCRE_ID').values
+    ccre_count = ccre_activity.shape[0]
+    ccre_activity_new = np.zeros((ccre_activity.shape[0], 32))
+    ccre_activity_new[:, 8:32] = ccre_activity
+    return torch.Tensor(np.concatenate((ge_values_new, ccre_activity_new))).cpu(), ge_count, ccre_count
+
 
 def distance(X, Y, square=True):
     """
@@ -165,26 +167,29 @@ def distance(X, Y, square=True):
 
 
 def get_normalized_adjacency_matrix(weights):
-    #We don't create self loops with 1 (nor with any calue)
+    # We don't create self loops with 1 (nor with any calue)
     # because we want the embeddings to adaptively learn
-    #the self-loop weights.
+    # the self-loop weights.
     # W = torch.eye(weights.shape[0]).cuda() + weights
     # degree = torch.sum(W, dim=1).pow(-0.5)
     # return (W * degree).t()*degree
     degree = torch.sum(weights, dim=1).pow(-0.5)
     return (weights * degree).t() * degree
 
+
 def get_weight_initial(shape):
     bound = np.sqrt(6.0 / (shape[0] + shape[1]))
     ini = torch.rand(shape) * 2 * bound - bound
     return torch.nn.Parameter(ini, requires_grad=True)
+
 
 def fast_genomic_distance_to_similarity(link_matrix, c, d):
     '''
     see https://www.desmos.com/calculator/frrfbs0tas
     TODO play aroun'
     '''
-    return 1 / (((link_matrix / c) ** (10*d)) + 1)
+    return 1 / (((link_matrix / c) ** (10 * d)) + 1)
+
 
 def get_genomic_distance_matrix(link_ds):
     genes = link_ds.index.unique().tolist()
@@ -250,7 +255,7 @@ def load_data(datapath, num_of_genes=0):
     link_ds['EnsembleID'] = link_ds['EnsembleID'].apply(lambda x: x.strip())
     link_ds['cCRE_ID'] = link_ds['cCRE_ID'].apply(lambda x: x.strip())
 
-    if num_of_genes==0:
+    if num_of_genes == 0:
         var_ge_list = working_genes_ds['EnsembleID'].tolist()
     else:
         var_ge_list = working_genes_ds['EnsembleID'].tolist()[:num_of_genes]
@@ -266,87 +271,93 @@ def load_data(datapath, num_of_genes=0):
 
     return link_ds, ccre_ds
 
+
 #####
 # ADAGAE OBJECT
 ########
 
 NUM_NEIGHBORS_LABEL: str = 'NumNeighbors'
 
-class AdaGAE(torch.nn.Module):
 
+class AdaGAE_NN(torch.nn.Module):
+
+    def __init__(self,
+                 data_matrix,
+                 device,
+                 layers=None,
+                 pre_trained=False,
+                 pre_trained_state_dict='models/combined_adagae_z12_initk150_150epochs',
+                 pre_computed_embedding='models/combined_adagae_z12_initk150_150epochs_embedding'
+                 ):
+        super(AdaGAE_NN, self).__init__()
+        if layers is None: layers = [32, 18, 12]
+        self.device = device
+        self.embedding_dim = layers[-1]
+        self.embedding = None
+        self.mid_dim = layers[1]
+        self.input_dim = layers[0]
+        self.data_matrix = data_matrix.to(device)
+        self.W1 = get_weight_initial([self.input_dim, self.mid_dim])
+        self.W2 = get_weight_initial([self.mid_dim, self.embedding_dim])
+        if pre_trained:
+            self.load_state_dict(torch.load(datapath + pre_trained_state_dict))
+            self.embedding = torch.load(datapath + pre_computed_embedding)
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
+
+    def forward(self, norm_adj_matrix):
+        embedding = norm_adj_matrix.mm(self.data_matrix.matmul(self.W1))
+        embedding = torch.relu(embedding)
+        self.embedding = norm_adj_matrix.mm(embedding.matmul(self.W2))
+        distances = distance(self.embedding.t(), self.embedding.t())
+        softmax = torch.nn.Softmax(dim=1)
+        recons_w = softmax(-distances)
+        return recons_w + 10 ** -10
+
+
+class AdaGAE():
 
     def __init__(self, X,
                  layers=None,
                  device=None,
-                 pre_trained=False,
-                 pre_trained_state_dict='models/combined_adagae_z12_initk150_150epochs',
-                 pre_computed_embedding='models/combined_adagae_z12_initk150_150epochs_embedding'):
+                 pre_trained=False):
 
         super(AdaGAE, self).__init__()
 
-        if layers is None: layers = [32, 24, 12]
-
-        if device is None: device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+        self.device = device
+        if self.device is None: self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.X = X
-        self.current_sparsity = init_sparsity + 1
-        self.current_genomic_slope = init_genomic_slope
-        self.embedding_dim = layers[-1]
-        self.mid_dim = layers[1]
-        self.input_dim = layers[0]
-        self.pre_trained_state_dict = pre_trained_state_dict
-        self.pre_computed_embedding = pre_computed_embedding
-
+        self.layers = layers
         if bounded_sparsity:
             self.max_sparsity = self.cal_max_neighbors()
         else:
             self.max_sparsity = None
-
         print('Neighbors will increment up to ', self.max_sparsity)
-
-        self.device = device
-        self.embedding = None
         self.pre_trained = pre_trained
-        self._build_up()
+        self.reset()
 
-    def _build_up(self):
-        self.W1 = get_weight_initial([self.input_dim, self.mid_dim])
-        self.W2 = get_weight_initial([self.mid_dim, self.embedding_dim])
-        if self.pre_trained:
-            self.load_state_dict(torch.load(datapath + self.pre_trained_state_dict))
-            self.embedding = torch.load(datapath + self.pre_computed_embedding)
+    def reset(self):
+        self.iteration = 0
+        self.gae_nn = None
+        torch.cuda.empty_cache()
+        self.gae_nn = AdaGAE_NN(self.X, self.device, self.layers, self.pre_trained).to(self.device)
+        self.current_sparsity = init_sparsity + 1
+        self.current_genomic_slope = init_genomic_slope
 
     def cal_max_neighbors(self):
         size = self.X.shape[0]
         return 2.0 * size / num_clusters
 
-    def forward(self, norm_adj_matrix):
-        # sparse
-        embedding = norm_adj_matrix.mm(self.X.matmul(self.W1))
-        embedding = torch.nn.functional.relu(embedding)
-        # sparse
-        self.embedding = norm_adj_matrix.mm(embedding.matmul(self.W2))
-        distances = distance(self.embedding.t(), self.embedding.t())
-        softmax = torch.nn.Softmax(dim=1)
-        recons_w = softmax(-distances)
-        # sparseProb = SparseProb(sparsity=self.num_neighbors)
-        # recons_w = sparseProb(distances)
-        return recons_w + 10 ** -10
-        # return 1 / (distances + 1)
-        # return torch.sigmoid(self.embedding.matmul(torch.t(self.embedding)))
-
     def update_graph(self, epoch):
-        print('updating graph Laplacian with sparsity: ', self.current_sparsity,' and gs: ',self.current_genomic_slope)
+        print('updating graph Laplacian with sparsity: ', self.current_sparsity, ' and gs: ', self.current_genomic_slope)
         tensorboard.add_scalar(NUM_NEIGHBORS_LABEL, self.current_sparsity, epoch * max_iter)
-        weights, raw_weights = self.cal_weights_via_CAN(self.embedding.t())
+        weights, raw_weights = self.cal_weights_via_CAN(self.gae_nn.embedding.t())
         weights = weights.detach()
         raw_weights = raw_weights.detach()
         # threshold = 0.5
         # connections = (recons > threshold).type(torch.IntTensor).cuda()
         # weights = weights * connections
-        Laplacian = get_normalized_adjacency_matrix(weights)
-        # Laplacian = utils.get_Laplacian_from_weights(utils.noise(weights))
-        return weights, Laplacian, raw_weights
+        norm_adj_matrix = get_normalized_adjacency_matrix(weights)
+        return weights, norm_adj_matrix, raw_weights
 
     def build_loss(self, recons, weights, raw_weights, global_step):
 
@@ -361,14 +372,12 @@ class AdaGAE(torch.nn.Module):
         # here we know we have to compute the mean kl divergence for each point.
         loss = loss.mean()
         tensorboard.add_scalar('KL_divergence', loss.item(), global_step)
-        # loss += 10**-3 * (torch.mean(self.embedding.pow(2)))
-        # loss += 10**-3 * (torch.mean(self.W1.pow(2)) + torch.mean(self.W2.pow(2)))
-        # loss += 10**-3 * (torch.mean(self.W1.abs()) + torch.mean(self.W2.abs()))
 
         degree = weights.sum(dim=1)
         laplacian = torch.diag(degree) - weights
         # This is exactly equation 11 in the paper. notice that torch.trace return the sum of the elements in the diagonal of the input matrix.
-        local_distance_preserving_loss = lam * torch.trace(self.embedding.t().matmul(laplacian).matmul(self.embedding)) / size
+        local_distance_preserving_loss = lam * torch.trace(
+            self.gae_nn.embedding.t().matmul(laplacian).matmul(self.gae_nn.embedding)) / size
         tensorboard.add_scalar('LocalDistPreservingPenalty', local_distance_preserving_loss.item(), global_step)
 
         loss += local_distance_preserving_loss
@@ -399,24 +408,23 @@ class AdaGAE(torch.nn.Module):
         tensorboard.add_scalar(NUM_NEIGHBORS_LABEL, self.current_sparsity, 0)
         if self.pre_trained:
             # weigths is A tilded, because is the symmetric modification of the p distribution which is in raw_weigths.
-            weights, raw_weights = self.cal_weights_via_CAN(self.embedding.t())
+            weights, raw_weights = self.cal_weights_via_CAN(self.gae_nn.embedding.t())
         else:
             weights, raw_weights = self.cal_weights_via_CAN(self.X.t())
 
-        # they row-wise normalize the weigths computed into the laplacian (A hat)
+        # they row-wise normalize the weigths computed into the A hat matrix
         normalized_adj_matrix = get_normalized_adjacency_matrix(weights)
         normalized_adj_matrix = normalized_adj_matrix.to_sparse()
         torch.cuda.empty_cache()
 
-        optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
-        self.to(self.device)
+        self.gae_nn.to(self.device)
 
         for epoch in tqdm(range(max_epoch)):
             self.epoch_losses = []
             for i in range(max_iter):
-                optimizer.zero_grad()
+                self.gae_nn.optimizer.zero_grad()
                 # recons is the q ditribution.
-                recons = self.forward(normalized_adj_matrix)
+                recons = self.gae_nn(normalized_adj_matrix)
                 global_step = (epoch * max_iter) + i
                 loss = self.build_loss(recons, weights, raw_weights, global_step)
                 self.epoch_losses.append(loss.item())
@@ -424,12 +432,12 @@ class AdaGAE(torch.nn.Module):
                 raw_weights = raw_weights.cpu()
                 torch.cuda.empty_cache()
                 loss.backward()
-                optimizer.step()
+                self.gae_nn.optimizer.step()
                 weights = weights.to(self.device)
                 raw_weights = raw_weights.to(self.device)
 
             if (not bounded_sparsity) or (self.current_sparsity < self.max_sparsity):
-                weights, normalized_adj_matrix, raw_weights = self.update_graph(epoch+1)
+                weights, normalized_adj_matrix, raw_weights = self.update_graph(epoch + 1)
                 if (epoch > 1) and (epoch % 10 == 0): self.clustering()
                 self.current_sparsity += sparsity_increment
                 if self.current_genomic_slope > 0.05:
@@ -510,14 +518,14 @@ class AdaGAE(torch.nn.Module):
 
     def clustering(self, visual=True, n_neighbors=30, min_dist=0):
 
-        embedding = self.embedding.detach().cpu().numpy()
+        embedding = self.gae_nn.embedding.detach().cpu().numpy()
         km = KMeans(n_clusters=num_clusters).fit(embedding)
         prediction = km.predict(embedding)
         ch_score, ge_ch_score_raw, ccre_ch_score_raw = self.cal_clustering_metric(embedding, prediction)
         cpu_embedding = embedding
 
         print(' k-means --- ch_score: %5.4f, ge_raw_ch_score: %5.4f, ccre_raw_ch_score: %5.4f' % (
-        ch_score, ge_ch_score_raw, ccre_ch_score_raw))
+            ch_score, ge_ch_score_raw, ccre_ch_score_raw))
 
         if visual:
             umap_embedding = umap.UMAP(
@@ -546,7 +554,7 @@ class AdaGAE(torch.nn.Module):
 
             classes = ['genes', 'ccres']
             class_labels = np.array([classes[0]] * ge_count + [classes[1]] * ccre_count)
-            alphas = [1,0.3]
+            alphas = [1, 0.3]
             for idx, elem_class in enumerate(classes):
                 cluster_points = _safe_indexing(umap_embedding, class_labels == elem_class)
                 cluster_marker = markers[idx % len(markers)]
@@ -562,15 +570,14 @@ class AdaGAE(torch.nn.Module):
             plt.legend()
             plt.show()
 
-
     def visual_eval(self, n_neighbors=30, min_dist=0):
 
-        embedding = self.embedding.detach().cpu().numpy()
+        embedding = self.gae_nn.embedding.detach().cpu().numpy()
         km = KMeans(n_clusters=num_clusters).fit(embedding)
         prediction = km.predict(embedding)
         ch_score, ge_ch_score_raw, ccre_ch_score_raw = self.cal_clustering_metric(embedding, prediction)
         print('EVAL ch_score: %5.4f, ge_raw_ch_score: %5.4f, ccre_raw_ch_score: %5.4f' % (
-        ch_score, ge_ch_score_raw, ccre_ch_score_raw))
+            ch_score, ge_ch_score_raw, ccre_ch_score_raw))
         class_label = np.array(['genes'] * ge_count + ['ccres'] * ccre_count)
         mapper = umap.UMAP(
             n_neighbors=n_neighbors,
@@ -578,10 +585,11 @@ class AdaGAE(torch.nn.Module):
         ).fit(embedding)
         umap.plot.points(mapper, width=1500, height=1500, labels=prediction)
         umap.plot.points(mapper, width=1500, height=1500, labels=class_label)
-        #primitive_clusters = get_primitive_clusters()
-        #umap.plot.points(mapper, width=1500, height=1500, labels=primitive_clusters)
+        # primitive_clusters = get_primitive_clusters()
+        # umap.plot.points(mapper, width=1500, height=1500, labels=primitive_clusters)
 
         return mapper, prediction
+
 
 ###########
 ## HYPER-PARAMS
@@ -590,10 +598,10 @@ class AdaGAE(torch.nn.Module):
 genomic_C = 3e4
 genes_to_pick = 20
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-max_iter=50
-max_epoch=120
+max_iter = 50
+max_epoch = 120
 sparsity_increment = 1
-learning_rate = 5*10**-3
+learning_rate = 5 * 10 ** -3
 init_sparsity = 3
 init_genomic_slope = current_genomic_slope = 1
 genomic_slope_decrement = 0.04
@@ -604,11 +612,8 @@ bounded_sparsity = False
 regularized_distance = True
 CCRE_dist_reg_factor = 10.5
 
-
-
 if __name__ == '__main__':
-
-    tensorboard = SummaryWriter(LOG_DIR+'/lambda_8_gbf_0.8_dynamicGS')
+    tensorboard = SummaryWriter(LOG_DIR + '/lambda_8_gbf_0.8_dynamicGS')
 
     link_ds, ccre_ds = load_data(datapath, genes_to_pick)
 
@@ -619,7 +624,7 @@ if __name__ == '__main__':
     X /= torch.max(X)
     X = torch.Tensor(X).to(device)
     input_dim = X.shape[1]
-    layers = [input_dim, 24 ,12]
+    layers = [input_dim, 24, 12]
 
     gae = AdaGAE(X,
                  layers=layers,
@@ -627,4 +632,4 @@ if __name__ == '__main__':
                  pre_trained=False)
     gae.run()
 
-    #tensorboard.close()
+    # tensorboard.close()
