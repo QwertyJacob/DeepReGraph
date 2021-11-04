@@ -9,7 +9,7 @@
 #!unzip ngrok-stable-linux-amd64.zip
 
 #import os
-#LOG_DIR = 'runs'
+#LOG_DIR = '/content/DIAGdrive/MyDrive/GE_Datasets/official_logs/'
 #os.makedirs(LOG_DIR, exist_ok=True)
 #get_ipython().system_raw(
 #    'tensorboard --logdir {} --host 0.0.0.0 --port 6006 &'
@@ -33,6 +33,7 @@ datapath = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\GE_Datasets\\'
 
 reports_path = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\RL_developmental_studies\\Reports\\'
 
+LOG_DIR = 'local_runs/'
 
 
 ##COPY TO NOTEBOOK FROM HERE!!!###
@@ -335,7 +336,7 @@ class AdaGAE(torch.nn.Module):
         # return torch.sigmoid(self.embedding.matmul(torch.t(self.embedding)))
 
     def update_graph(self, epoch):
-        print('updating graph Laplacian with neighbors: ', self.current_sparsity)
+        print('updating graph Laplacian with sparsity: ', self.current_sparsity,' and gs: ',self.current_genomic_slope)
         tensorboard.add_scalar(NUM_NEIGHBORS_LABEL, self.current_sparsity, epoch * max_iter)
         weights, raw_weights = self.cal_weights_via_CAN(self.embedding.t())
         weights = weights.detach()
@@ -431,7 +432,8 @@ class AdaGAE(torch.nn.Module):
                 weights, normalized_adj_matrix, raw_weights = self.update_graph(epoch+1)
                 if (epoch > 1) and (epoch % 10 == 0): self.clustering()
                 self.current_sparsity += sparsity_increment
-                self.current_genomic_slope -= genomic_slope_decrement
+                if self.current_genomic_slope > 0.05:
+                    self.current_genomic_slope -= genomic_slope_decrement
             else:
                 break
 
@@ -581,8 +583,6 @@ class AdaGAE(torch.nn.Module):
 
         return mapper, prediction
 
-
-
 ###########
 ## HYPER-PARAMS
 ###########
@@ -608,7 +608,7 @@ CCRE_dist_reg_factor = 10.5
 
 if __name__ == '__main__':
 
-    tensorboard = SummaryWriter()
+    tensorboard = SummaryWriter(LOG_DIR+'/lambda_8_gbf_0.8_dynamicGS')
 
     link_ds, ccre_ds = load_data(datapath, genes_to_pick)
 
