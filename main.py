@@ -276,9 +276,13 @@ def load_data(datapath, num_of_genes=0):
 # ADAGAE OBJECT
 ########
 
-SPARSITY_LABEL: str = 'NumNeighbors'
+SPARSITY_LABEL: str = 'Sparsity'
 SLOPE_LABEL: str = 'GeneticSlope'
-
+KL_DIVERGENCE_LABEL: str = 'KL_divergence'
+LOCALDISTPRESERVING_LABEL: str = 'LocalDistPreservingPenalty'
+TOTAL_LOSS_LABEL: str = 'Total_Loss'
+LAMBDA_LABEL: str = 'Lambda'
+GENETIC_BALANCE_FACTOR_LABEL: str = 'GeneticBalanceFactor'
 
 class AdaGAE_NN(torch.nn.Module):
 
@@ -319,7 +323,6 @@ class AdaGAE_NN(torch.nn.Module):
 class AdaGAE():
 
     def __init__(self, X,
-                 layers=None,
                  device=None,
                  pre_trained=False):
 
@@ -328,26 +331,29 @@ class AdaGAE():
         self.device = device
         if self.device is None: self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.X = X
-        self.layers = layers
         if bounded_sparsity:
             self.max_sparsity = self.cal_max_neighbors()
         else:
             self.max_sparsity = None
         print('Neighbors will increment up to ', self.max_sparsity)
         self.pre_trained = pre_trained
+        self.global_step = 0
         self.reset()
 
     def reset(self):
         self.iteration = 0
         self.gae_nn = None
         torch.cuda.empty_cache()
-        self.gae_nn = AdaGAE_NN(self.X, self.device, self.layers, self.pre_trained).to(self.device)
+        self.gae_nn = AdaGAE_NN(self.X, self.device, layers, self.pre_trained).to(self.device)
         self.current_sparsity = init_sparsity + 1
         self.current_genomic_slope = init_genomic_slope
+        self.current_genetic_balance_factor = genetic_balance_factor
+        self.current_lambda = init_lambda
         self.init_adj_matrices()
         if not self.pre_trained: self.init_embedding()
 
     def init_adj_matrices(self):
+        tensorboard.add_scalar(SPARSITY_LABEL, self.current_sparsity, self.global_step)
         # adj is A tilded, it is the symmetric modification of the p distribution
         # raw_adj is the p distribution before the symetrization.
         if self.pre_trained:
@@ -379,8 +385,6 @@ class AdaGAE():
 
     def update_graph(self, epoch):
         print('updating A hat with sparsity: ', self.current_sparsity, ' and gs: ', self.current_genomic_slope)
-        tensorboard.add_scalar(SPARSITY_LABEL, self.current_sparsity, epoch * max_iter)
-        tensorboard.add_scalar(SLOPE_LABEL, self.current_genomic_slope, epoch * max_iter)
 
         self.adj, self.raw_adj = self.cal_weights_via_CAN(self.gae_nn.embedding.t())
         self.adj = self.adj.detach()
@@ -392,29 +396,33 @@ class AdaGAE():
         return self.adj, norm_adj, self.raw_adj
 
 
-    def build_loss(self, recons, weights, raw_weights, global_step):
+    def build_loss(self, recons):
+
+        self.adj.to(device)
+        self.raw_adj.to(device)
 
         size = self.X.shape[0]
         loss = 0
         # notice that recons is actually the q distribution.
         # and that raw_weigths is the p distribution. (before the symmetrization)
         # the following line is the definition of kl divergence
-        loss += raw_weights * torch.log(raw_weights / recons + 10 ** -10)
+        loss += self.raw_adj * torch.log(self.raw_adj / recons + 10 ** -10)
         loss = loss.sum(dim=1)
         # In the paper they mention the minimization of the row-wise kl divergence.
         # here we know we have to compute the mean kl divergence for each point.
         loss = loss.mean()
-        tensorboard.add_scalar('KL_divergence', loss.item(), global_step)
+        tensorboard.add_scalar(KL_DIVERGENCE_LABEL, loss.item(), self.global_step)
 
-        degree = weights.sum(dim=1)
-        laplacian = torch.diag(degree) - weights
-        # This is exactly equation 11 in the paper. notice that torch.trace return the sum of the elements in the diagonal of the input matrix.
-        local_distance_preserving_loss = lam * torch.trace(
+        degree = self.adj.sum(dim=1)
+        laplacian = torch.diag(degree) - self.adj
+        # This is exactly equation 11 in the paper.
+        # Notice that torch.trace return the sum of the elements in the diagonal of the input matrix.
+        local_distance_preserving_loss = self.current_lambda * torch.trace(
             self.gae_nn.embedding.t().matmul(laplacian).matmul(self.gae_nn.embedding)) / size
-        tensorboard.add_scalar('LocalDistPreservingPenalty', local_distance_preserving_loss.item(), global_step)
+        tensorboard.add_scalar(LOCALDISTPRESERVING_LABEL, local_distance_preserving_loss.item(), self.global_step)
 
         loss += local_distance_preserving_loss
-        tensorboard.add_scalar('Total_Loss', loss.item(), global_step)
+        tensorboard.add_scalar(TOTAL_LOSS_LABEL, loss.item(), self.global_step)
 
         return loss
 
@@ -437,18 +445,23 @@ class AdaGAE():
         return ge_ch, ccre_ch
 
     def step(self, action):
+        self.global_step += 1
         self.iteration += 1
         action = action.detach().to('cpu').numpy()
-        current_lambda = action[0]
-        current_sparsity = action[1]
-        current_genomic_slope = action[2]
-        current_genomic_balance_factor = action[3]
+        self.current_lambda = action[0].item()
+        tensorboard.add_scalar(LAMBDA_LABEL, self.current_lambda, self.global_step)
+        self.current_sparsity = int(action[1].item())
+        tensorboard.add_scalar(SPARSITY_LABEL, self.current_sparsity, self.global_step)
+        self.current_genomic_slope = action[2].item()
+        tensorboard.add_scalar(SLOPE_LABEL, self.current_genomic_slope, self.global_step)
+        self.current_genetic_balance_factor = action[3].item()
+        tensorboard.add_scalar(GENETIC_BALANCE_FACTOR_LABEL, self.current_genetic_balance_factor, self.global_step)
 
         self.gae_nn.optimizer.zero_grad()
 
         # recons is the q distribution.
         recons = self.gae_nn(self.norm_adj)
-        loss = self.build_loss(recons, self.adj.to(device), self.raw_adj.to(device), self.iteration)
+        loss = self.build_loss(recons)
 
         self.adj = self.adj.cpu()
         self.raw_adj = self.raw_adj.cpu()
@@ -463,15 +476,14 @@ class AdaGAE():
 
     @profile(output_file='profiling_adagae')
     def dummy_run(self):
-        tensorboard.add_scalar(SPARSITY_LABEL, self.current_sparsity, 0)
 
         for epoch in tqdm(range(max_epoch)):
             self.epoch_losses = []
             for i in range(max_iter):
-                dummy_action = torch.Tensor([lam,
+                dummy_action = torch.Tensor([self.current_lambda,
                                              self.current_sparsity,
                                              self.current_genomic_slope,
-                                             genetic_balance_factor]).to(self.device)
+                                             self.current_genetic_balance_factor]).to(self.device)
 
                 reward, loss, done_flag = self.step(dummy_action)
                 self.epoch_losses.append(loss.item())
@@ -649,14 +661,14 @@ init_sparsity = 3
 init_genomic_slope = current_genomic_slope = 1
 genomic_slope_decrement = 0.04
 num_clusters = 20
-lam = 4.0
+init_lambda = 4.0
 genetic_balance_factor = 3
 bounded_sparsity = False
 regularized_distance = True
 CCRE_dist_reg_factor = 10.5
 
 if __name__ == '__main__':
-    tensorboard = SummaryWriter(LOG_DIR + '/new_structure')
+    tensorboard = SummaryWriter(LOG_DIR + '/new_structure3')
 
     link_ds, ccre_ds = load_data(datapath, genes_to_pick)
 
@@ -670,7 +682,6 @@ if __name__ == '__main__':
     layers = [input_dim, 24, 12]
 
     gae = AdaGAE(X,
-                 layers=layers,
                  device=device,
                  pre_trained=False)
     gae.dummy_run()
