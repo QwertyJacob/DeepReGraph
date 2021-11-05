@@ -552,9 +552,10 @@ class AdaGAE():
         # Notice that the link distance matrix has already self loop weight information
         current_link_score = fast_genomic_distance_to_similarity(links, genomic_C, current_genomic_slope)
 
-        # We know that, in the (quasi) simple dist_to_score model, range of link scores go from 0 to 1.
-        # We scale the link information to the p distribution.
-        current_link_score *= (torch.max(weights).item() * genetic_balance_factor)
+        if balance_genetic_information:
+            # We know that, in the (quasi) simple dist_to_score model, range of link scores go from 0 to 1.
+            # We scale the link information to the p distribution.
+            current_link_score *= (torch.max(weights).item() * genetic_balance_factor)
 
         current_link_score = torch.Tensor(current_link_score).to(device)
 
@@ -666,6 +667,7 @@ genetic_balance_factor = 3
 bounded_sparsity = False
 regularized_distance = True
 CCRE_dist_reg_factor = 10.5
+balance_genetic_information = True
 
 if __name__ == '__main__':
     tensorboard = SummaryWriter(LOG_DIR + '/new_structure3')
