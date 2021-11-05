@@ -398,8 +398,8 @@ class AdaGAE():
 
     def build_loss(self, recons):
 
-        self.adj.to(device)
-        self.raw_adj.to(device)
+        self.adj = self.adj.to(device)
+        self.raw_adj = self.raw_adj.to(device)
 
         size = self.X.shape[0]
         loss = 0
