@@ -162,81 +162,6 @@ def distance(X, Y, square=True):
     # result = torch.max(result, result.t())
     return result
 
-def cal_weights_via_CAN(X,
-                        num_neighbors,
-                        links,
-                        device='cpu'):
-    """
-    Solve Problem: Clustering-with-Adaptive-Neighbors(CAN)
-    :param X: d * n
-    :param num_neighbors:
-    :return:
-    See section 3.6 of the paper! (specially equation 20)
-    """
-    size = X.shape[1]
-
-    # We have notice a difference between the distributions of same-class distances.
-    # (see the report C:\Users\Jesus Cevallos\odrive\DIAG Drive\RL_developmental_studies\Next Steps.docx)
-    if regularized_distance:
-        distances = distance(X, X)
-        distances[ge_count:, ge_count:] = distances[ge_count:, ge_count:] / CCRE_dist_reg_factor
-    else:
-        distances = distance(X, X)
-
-    distances = torch.max(distances, torch.t(distances))
-    sorted_distances, _ = distances.sort(dim=1)
-    # distance to the k-th nearest neighbor:
-    top_k = sorted_distances[:, num_neighbors]
-    top_k = torch.t(top_k.repeat(size, 1)) + 10 ** -10
-
-    # summatory of the nearest k distances:
-    sum_top_k = torch.sum(sorted_distances[:, 0:num_neighbors], dim=1)
-    sum_top_k = torch.t(sum_top_k.repeat(size, 1))
-    sorted_distances = None
-    torch.cuda.empty_cache()
-
-    # numerator of equation 20 in the paper
-    T = top_k - distances
-    distances = None
-    torch.cuda.empty_cache()
-
-    # equation 20 in the paper. notirce that num_neighbors = k.
-    weights = torch.div(T, num_neighbors * top_k - sum_top_k)
-    T = None
-    top_k = None
-    sum_top_k = None
-    torch.cuda.empty_cache()
-    # notice that the following line is also part of equation 20
-    weights = weights.relu().to(device)
-
-    # now at this point, after computing the generative model of the
-    # k sparse graph being based on node divergences and similarities,
-    # we add weight to some points of the connectivity distribution being based
-    # on the explicit graph information.
-
-    # Notice that the link distance matrix has already self loop weight information
-    links = fast_genomic_distance_to_similarity(links,genomic_C)
-
-    if balance_genomic_information:
-        # We know that, in the (quasi) simple dist_to_score model, range of link scores go from 0 to 1.
-        # We scale the link information to the p distribution.
-        links *= (torch.max(weights).item() * genetic_balance_factor)
-
-    links = torch.Tensor(links).to(device)
-
-    weights += links
-    # row-wise normalization.
-    weights /= weights.sum(dim=1).reshape([size, 1])
-
-    torch.cuda.empty_cache()
-    # UN-symmetric connectivity distribution
-    raw_weights = weights
-    # Symmetrization of the connectivity distribution
-    weights = (weights + weights.t()) / 2
-    raw_weights = raw_weights.to(device)
-    weights = weights.to(device)
-    return weights, raw_weights
-
 
 def get_normalized_adjacency_matrix(weights):
     #We don't create self loops with 1 (nor with any calue)
@@ -253,12 +178,12 @@ def get_weight_initial(shape):
     ini = torch.rand(shape) * 2 * bound - bound
     return torch.nn.Parameter(ini, requires_grad=True)
 
-def fast_genomic_distance_to_similarity(link_matrix, c):
+def fast_genomic_distance_to_similarity(link_matrix, c, d):
     '''
-    see https://www.desmos.com/calculator/kx3essm3ct
+    see https://www.desmos.com/calculator/frrfbs0tas
     TODO play aroun'
     '''
-    return 1 / (((link_matrix / c) ** 2) + 1)
+    return 1 / (((link_matrix / c) ** (10*d)) + 1)
 
 def get_genomic_distance_matrix(link_ds):
     genes = link_ds.index.unique().tolist()
@@ -352,8 +277,6 @@ class AdaGAE(torch.nn.Module):
 
     def __init__(self, X,
                  layers=None,
-                 init_sparsity_param=150,
-                 links=None,
                  device=None,
                  pre_trained=False,
                  pre_trained_state_dict='models/combined_adagae_z12_initk150_150epochs',
@@ -366,7 +289,8 @@ class AdaGAE(torch.nn.Module):
         if device is None: device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         self.X = X
-        self.current_sparsity = init_sparsity_param + 1
+        self.current_sparsity = init_sparsity + 1
+        self.current_genomic_slope = init_genomic_slope
         self.embedding_dim = layers[-1]
         self.mid_dim = layers[1]
         self.input_dim = layers[0]
@@ -374,13 +298,12 @@ class AdaGAE(torch.nn.Module):
         self.pre_computed_embedding = pre_computed_embedding
 
         if bounded_sparsity:
-            self.max_neighbors = self.cal_max_neighbors()
+            self.max_sparsity = self.cal_max_neighbors()
         else:
-            self.max_neighbors = None
+            self.max_sparsity = None
 
-        print('Neighbors will increment up to ', self.max_neighbors)
+        print('Neighbors will increment up to ', self.max_sparsity)
 
-        self.links = links
         self.device = device
         self.embedding = None
         self.pre_trained = pre_trained
@@ -415,10 +338,7 @@ class AdaGAE(torch.nn.Module):
     def update_graph(self, epoch):
         print('updating graph Laplacian with neighbors: ', self.current_sparsity)
         tensorboard.add_scalar(NUM_NEIGHBORS_LABEL, self.current_sparsity, epoch * max_iter)
-        weights, raw_weights = cal_weights_via_CAN(self.embedding.t(),
-                                                   self.current_sparsity,
-                                                   self.links,
-                                                   self.device)  # first
+        weights, raw_weights = self.cal_weights_via_CAN(self.embedding.t())
         weights = weights.detach()
         raw_weights = raw_weights.detach()
         # threshold = 0.5
@@ -479,15 +399,9 @@ class AdaGAE(torch.nn.Module):
         tensorboard.add_scalar(NUM_NEIGHBORS_LABEL, self.current_sparsity, 0)
         if self.pre_trained:
             # weigths is A tilded, because is the symmetric modification of the p distribution which is in raw_weigths.
-            weights, raw_weights = cal_weights_via_CAN(self.embedding.t(),
-                                                       self.current_sparsity,
-                                                       self.links,
-                                                       self.device)
+            weights, raw_weights = self.cal_weights_via_CAN(self.embedding.t())
         else:
-            weights, raw_weights = cal_weights_via_CAN(self.X.t(),
-                                                       self.current_sparsity,
-                                                       self.links,
-                                                       self.device)
+            weights, raw_weights = self.cal_weights_via_CAN(self.X.t())
 
         # they row-wise normalize the weigths computed into the laplacian (A hat)
         normalized_adj_matrix = get_normalized_adjacency_matrix(weights)
@@ -498,13 +412,11 @@ class AdaGAE(torch.nn.Module):
         self.to(self.device)
 
         for epoch in tqdm(range(max_epoch)):
-
             self.epoch_losses = []
-
             for i in range(max_iter):
                 optimizer.zero_grad()
                 # recons is the q ditribution.
-                recons = self(normalized_adj_matrix)
+                recons = self.forward(normalized_adj_matrix)
                 global_step = (epoch * max_iter) + i
                 loss = self.build_loss(recons, weights, raw_weights, global_step)
                 self.epoch_losses.append(loss.item())
@@ -515,25 +427,87 @@ class AdaGAE(torch.nn.Module):
                 optimizer.step()
                 weights = weights.to(self.device)
                 raw_weights = raw_weights.to(self.device)
-                # print('epoch-%3d-i:%3d,' % (epoch, i), 'loss: %6.5f' % loss.item())
 
-            # scio.savemat('results/embedding_{}.mat'.format(epoch), {'Embedding': self.embedding.cpu().detach().numpy()})
-
-            if (not bounded_sparsity) or (self.current_sparsity < self.max_neighbors):
+            if (not bounded_sparsity) or (self.current_sparsity < self.max_sparsity):
                 weights, normalized_adj_matrix, raw_weights = self.update_graph(epoch+1)
-                # weights, Laplacian, raw_weights = self.update_graph_entropy(recons)
-
-                if (epoch > 1) and (epoch % 10 == 0):
-                    self.clustering()
-
+                if (epoch > 1) and (epoch % 10 == 0): self.clustering()
                 self.current_sparsity += sparsity_increment
+                self.current_genomic_slope -= genomic_slope_decrement
             else:
                 self.current_sparsity = int(self.max_neighbors)
                 break
 
-
             mean_loss = sum(self.epoch_losses) / len(self.epoch_losses)
             print('epoch:%3d,' % epoch, 'loss: %6.5f' % mean_loss)
+
+    def cal_weights_via_CAN(self, transposed_data_matrix):
+        """
+        Solve Problem: Clustering-with-Adaptive-Neighbors(CAN)
+        See section 3.6 of the paper! (specially equation 20)
+        """
+        size = transposed_data_matrix.shape[1]
+
+        # We have notice a difference between the distributions of same-class distances.
+        # (see the report C:\Users\Jesus Cevallos\odrive\DIAG Drive\RL_developmental_studies\Next Steps.docx)
+        if regularized_distance:
+            distances = distance(transposed_data_matrix, transposed_data_matrix)
+            distances[ge_count:, ge_count:] = distances[ge_count:, ge_count:] / CCRE_dist_reg_factor
+        else:
+            distances = distance(transposed_data_matrix, transposed_data_matrix)
+
+        distances = torch.max(distances, torch.t(distances))
+        sorted_distances, _ = distances.sort(dim=1)
+        # distance to the k-th nearest neighbor:
+        top_k = sorted_distances[:, self.current_sparsity]
+        top_k = torch.t(top_k.repeat(size, 1)) + 10 ** -10
+
+        # summatory of the nearest k distances:
+        sum_top_k = torch.sum(sorted_distances[:, 0:self.current_sparsity], dim=1)
+        sum_top_k = torch.t(sum_top_k.repeat(size, 1))
+        sorted_distances = None
+        torch.cuda.empty_cache()
+
+        # numerator of equation 20 in the paper
+        T = top_k - distances
+        distances = None
+        torch.cuda.empty_cache()
+
+        # equation 20 in the paper. notirce that num_neighbors = k.
+        weights = torch.div(T, self.current_sparsity * top_k - sum_top_k)
+        T = None
+        top_k = None
+        sum_top_k = None
+        torch.cuda.empty_cache()
+        # notice that the following line is also part of equation 20
+        weights = weights.relu().to(self.device)
+
+        # now at this point, after computing the generative model of the
+        # k sparse graph being based on node divergences and similarities,
+        # we add weight to some points of the connectivity distribution being based
+        # on the explicit graph information.
+
+        # Notice that the link distance matrix has already self loop weight information
+        current_link_score = fast_genomic_distance_to_similarity(links, genomic_C, current_genomic_slope)
+
+        if balance_genomic_information:
+            # We know that, in the (quasi) simple dist_to_score model, range of link scores go from 0 to 1.
+            # We scale the link information to the p distribution.
+            current_link_score *= (torch.max(weights).item() * genetic_balance_factor)
+
+        current_link_score = torch.Tensor(current_link_score).to(device)
+
+        weights += current_link_score
+        # row-wise normalization.
+        weights /= weights.sum(dim=1).reshape([size, 1])
+
+        torch.cuda.empty_cache()
+        # UN-symmetric connectivity distribution
+        raw_weights = weights
+        # Symmetrization of the connectivity distribution
+        weights = (weights + weights.t()) / 2
+        raw_weights = raw_weights.to(device)
+        weights = weights.to(device)
+        return weights, raw_weights
 
     def clustering(self, visual=True, n_neighbors=30, min_dist=0):
 
@@ -624,6 +598,8 @@ max_epoch=100
 sparsity_increment = 5
 learning_rate = 5*10**-3
 init_sparsity = 150
+init_genomic_slope = current_genomic_slope = 0.2
+genomic_slope_decrement = 0
 num_clusters = 20
 lam = 4.0
 add_self_loops = False
@@ -655,8 +631,6 @@ if __name__ == '__main__':
           .format(lam, init_sparsity, num_clusters, genomic_C, max_iter, max_epoch))
     gae = AdaGAE(X,
                  layers=layers,
-                 init_sparsity_param=init_sparsity,
-                 links=links,
                  device=device,
                  pre_trained=False)
     gae.run()
