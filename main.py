@@ -224,7 +224,7 @@ def cal_weights_via_CAN(X,
     if balance_genomic_information:
         # We know that, in the (quasi) simple dist_to_score model, range of link scores go from 0 to 1.
         # We scale the link information to the p distribution.
-        links *= (torch.max(weights).item() * 1.5)
+        links *= (torch.max(weights).item() * genetic_balance_factor)
 
     links = torch.Tensor(links).to(device)
 
@@ -523,8 +523,8 @@ class AdaGAE(torch.nn.Module):
                                                        self.CCRE_dist_reg_factor)
 
         # they row-wise normalize the weigths computed into the laplacian (A hat)
-        Laplacian = get_normalized_adjacency_matrix(weights)
-        Laplacian = Laplacian.to_sparse()
+        normalized_adj_matrix = get_normalized_adjacency_matrix(weights)
+        normalized_adj_matrix = normalized_adj_matrix.to_sparse()
         torch.cuda.empty_cache()
 
         optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
@@ -537,9 +537,9 @@ class AdaGAE(torch.nn.Module):
             for i in range(self.max_iter):
                 optimizer.zero_grad()
                 # recons is the q ditribution.
-                recons = self(Laplacian)
-                global_step = (epoch*self.max_iter)+i
-                loss = self.build_loss(recons, weights, raw_weights,global_step)
+                recons = self(normalized_adj_matrix)
+                global_step = (epoch * self.max_iter) + i
+                loss = self.build_loss(recons, weights, raw_weights, global_step)
                 self.epoch_losses.append(loss.item())
                 weights = weights.cpu()
                 raw_weights = raw_weights.cpu()
@@ -553,7 +553,7 @@ class AdaGAE(torch.nn.Module):
             # scio.savemat('results/embedding_{}.mat'.format(epoch), {'Embedding': self.embedding.cpu().detach().numpy()})
 
             if (not self.bounded_sparsity) or (self.num_neighbors < self.max_neighbors):
-                weights, Laplacian, raw_weights = self.update_graph(epoch+1)
+                weights, normalized_adj_matrix, raw_weights = self.update_graph(epoch+1)
                 # weights, Laplacian, raw_weights = self.update_graph_entropy(recons)
 
                 if (epoch > 1) and (epoch % 10 == 0):
@@ -675,6 +675,7 @@ num_clusters = 20
 lam = 4.0
 add_self_loops = False
 balance_genomic_information = False
+genetic_balance_factor = None
 
 bounded_sparsity = False
 regularized_distance = False
