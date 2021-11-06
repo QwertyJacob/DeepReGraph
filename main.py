@@ -277,7 +277,8 @@ def load_data(datapath, num_of_genes=0):
 # ADAGAE OBJECT
 ########
 
-NUM_NEIGHBORS_LABEL: str = 'Sparsity'
+SPARSITY_LABEL: str = 'Sparsity'
+SLOPE_LABEL: str = 'GeneticSlope'
 
 
 class AdaGAE_NN(torch.nn.Module):
@@ -343,22 +344,52 @@ class AdaGAE():
         self.gae_nn = AdaGAE_NN(self.X, self.device, self.layers, self.pre_trained).to(self.device)
         self.current_sparsity = init_sparsity + 1
         self.current_genomic_slope = init_genomic_slope
+        self.init_adj_matrices()
+        if not self.pre_trained: self.init_embedding()
+
+    def init_adj_matrices(self):
+        # adj is A tilded, it is the symmetric modification of the p distribution
+        # raw_adj is the p distribution before the symetrization.
+        if self.pre_trained:
+            self.adj, self.raw_adj = self.cal_weights_via_CAN(self.gae_nn.embedding.t())
+        else:
+            self.adj, self.raw_adj = self.cal_weights_via_CAN(self.X.t())
+
+        self.norm_adj = get_normalized_adjacency_matrix(self.adj)
+        self.norm_adj = self.norm_adj.to_sparse()
+
+        self.adj = self.adj.cpu()
+        self.raw_adj = self.raw_adj.cpu()
+        # notice we could also put norm_adj into the cpu here...
+        torch.cuda.empty_cache()
+
+
+    def init_embedding(self):
+        with torch.no_grad():
+            # initilalizes self.gae_nn.embedding:
+            self.gae_nn.to(self.device)
+            _ = self.gae_nn(self.norm_adj.to(device))
+            _ = None
+            torch.cuda.empty_cache()
 
     def cal_max_neighbors(self):
         size = self.X.shape[0]
         return 2.0 * size / num_clusters
 
     def update_graph(self, epoch):
-        print('updating graph Laplacian with sparsity: ', self.current_sparsity, ' and gs: ', self.current_genomic_slope)
-        tensorboard.add_scalar(NUM_NEIGHBORS_LABEL, self.current_sparsity, epoch * max_iter)
-        weights, raw_weights = self.cal_weights_via_CAN(self.gae_nn.embedding.t())
-        weights = weights.detach()
-        raw_weights = raw_weights.detach()
+        print('updating A hat with sparsity: ', self.current_sparsity, ' and gs: ', self.current_genomic_slope)
+        tensorboard.add_scalar(SPARSITY_LABEL, self.current_sparsity, epoch * max_iter)
+        tensorboard.add_scalar(SLOPE_LABEL, self.current_genomic_slope, epoch * max_iter)
+
+        self.adj, self.raw_adj = self.cal_weights_via_CAN(self.gae_nn.embedding.t())
+        self.adj = self.adj.detach()
+        self.raw_adj = self.raw_adj.detach()
         # threshold = 0.5
         # connections = (recons > threshold).type(torch.IntTensor).cuda()
         # weights = weights * connections
-        norm_adj_matrix = get_normalized_adjacency_matrix(weights)
-        return weights, norm_adj_matrix, raw_weights
+        self.norm_adj = get_normalized_adjacency_matrix(self.adj)
+        return self.adj, self.norm_adj, self.raw_adj
+
 
     def build_loss(self, recons, weights, raw_weights, global_step):
 
@@ -404,46 +435,59 @@ class AdaGAE():
 
         return ge_ch, ccre_ch
 
-    @profile(output_file='profiling_adagae')
-    def run(self):
-        tensorboard.add_scalar(NUM_NEIGHBORS_LABEL, self.current_sparsity, 0)
-        if self.pre_trained:
-            # weigths is A tilded, because is the symmetric modification of the p distribution which is in raw_weigths.
-            weights, raw_weights = self.cal_weights_via_CAN(self.gae_nn.embedding.t())
-        else:
-            weights, raw_weights = self.cal_weights_via_CAN(self.X.t())
+    def step(self, action):
+        self.iteration += 1
+        action = action.detach().to('cpu').numpy()
+        current_lambda = action[0]
+        current_sparsity = int(action[1])
+        current_genomic_slope = action[2]
+        current_genomic_balance_factor = action[3]
 
-        # they row-wise normalize the weigths computed into the A hat matrix
-        normalized_adj_matrix = get_normalized_adjacency_matrix(weights)
-        normalized_adj_matrix = normalized_adj_matrix.to_sparse()
+        self.gae_nn.optimizer.zero_grad()
+
+        # recons is the q distribution.
+        recons = self.gae_nn(self.norm_adj)
+        loss = self.build_loss(recons, self.adj.to(device), self.raw_adj.to(device), self.iteration)
+
+        #self.adj = self.adj.cpu()
+        #self.raw_adj = self.raw_adj.cpu()
         torch.cuda.empty_cache()
+        loss.backward()
+        self.gae_nn.optimizer.step()
+
+        reward = 0
+        done_flag = False
+        return reward, loss, done_flag
+
+
+    @profile(output_file='profiling_adagae')
+    def dummy_run(self):
+        tensorboard.add_scalar(SPARSITY_LABEL, self.current_sparsity, 0)
 
         self.gae_nn.to(self.device)
-
         for epoch in tqdm(range(max_epoch)):
             self.epoch_losses = []
             for i in range(max_iter):
-                self.gae_nn.optimizer.zero_grad()
-                # recons is the q ditribution.
-                recons = self.gae_nn(normalized_adj_matrix)
-                global_step = (epoch * max_iter) + i
-                loss = self.build_loss(recons, weights, raw_weights, global_step)
-                self.epoch_losses.append(loss.item())
-                weights = weights.cpu()
-                raw_weights = raw_weights.cpu()
-                torch.cuda.empty_cache()
-                loss.backward()
-                self.gae_nn.optimizer.step()
-                weights = weights.to(self.device)
-                raw_weights = raw_weights.to(self.device)
+                dummy_action = torch.Tensor([lam,
+                                             self.current_sparsity,
+                                             self.current_genomic_slope,
+                                             genetic_balance_factor]).to(self.device)
 
+                reward, loss, done_flag = self.step(dummy_action)
+                self.epoch_losses.append(loss.item())
+
+            update = False
             if self.current_genomic_slope > min_genomic_slope:
-                    self.current_genomic_slope -= genomic_slope_decrement
+                self.current_genomic_slope -= genomic_slope_decrement
+                update = True
             if (not bounded_sparsity) or (self.current_sparsity < self.max_sparsity):
-                weights, normalized_adj_matrix, raw_weights = self.update_graph(epoch + 1)
-                if (epoch > 1) and (epoch % 10 == 0): self.clustering()
                 self.current_sparsity += sparsity_increment
-            else:
+                update = True
+            if update: self.update_graph(epoch + 1)
+
+            if (epoch > 1) and (epoch % 10 == 0): self.clustering()
+
+            if bounded_sparsity and (self.current_sparsity >= self.max_sparsity):
                 self.current_sparsity = int(self.max_neighbors)
                 break
 
@@ -636,6 +680,6 @@ if __name__ == '__main__':
                  layers=layers,
                  device=device,
                  pre_trained=False)
-    gae.run()
+    gae.dummy_run()
 
     # tensorboard.close()
