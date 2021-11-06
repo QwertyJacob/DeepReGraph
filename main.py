@@ -202,9 +202,8 @@ def get_genomic_distance_matrix(link_ds):
 
     dense_A = np.zeros((entity_number, entity_number))
     dense_A.fill(np.inf)
-    if self_loops_in_genomic_distance:
+    if add_self_loops:
         np.fill_diagonal(dense_A, 0)
-
     print('processing genomic distances...')
 
     for index, row in tqdm(link_ds.reset_index().iterrows()):
@@ -291,13 +290,11 @@ class AdaGAE_NN(torch.nn.Module):
     def __init__(self,
                  data_matrix,
                  device,
-                 layers=None,
                  pre_trained=False,
                  pre_trained_state_dict='models/combined_adagae_z12_initk150_150epochs',
                  pre_computed_embedding='models/combined_adagae_z12_initk150_150epochs_embedding'
                  ):
         super(AdaGAE_NN, self).__init__()
-        if layers is None: layers = [32, 18, 12]
         self.device = device
         self.embedding_dim = layers[-1]
         self.embedding = None
@@ -310,7 +307,6 @@ class AdaGAE_NN(torch.nn.Module):
             self.load_state_dict(torch.load(datapath + pre_trained_state_dict))
             self.embedding = torch.load(datapath + pre_computed_embedding)
         self.optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
-        self.to(self.device)
 
     def forward(self, norm_adj_matrix):
         embedding = norm_adj_matrix.mm(self.data_matrix.matmul(self.W1))
@@ -346,7 +342,7 @@ class AdaGAE():
         self.iteration = 0
         self.gae_nn = None
         torch.cuda.empty_cache()
-        self.gae_nn = AdaGAE_NN(self.X, self.device, layers, self.pre_trained).to(self.device)
+        self.gae_nn = AdaGAE_NN(self.X, self.device, self.pre_trained).to(self.device)
         self.current_sparsity = init_sparsity + 1
         self.current_genomic_slope = init_genomic_slope
         self.current_genetic_balance_factor = genetic_balance_factor
@@ -375,10 +371,9 @@ class AdaGAE():
     def init_embedding(self):
         with torch.no_grad():
             # initilalizes self.gae_nn.embedding:
-            _ = self.gae_nn(self.norm_adj)
+            self.gae_nn.to(self.device)
+            _ = self.gae_nn(self.norm_adj.to(device))
             _ = None
-            self.adj = self.adj.cpu()
-            self.raw_adj = self.raw_adj.cpu()
             torch.cuda.empty_cache()
 
     def cal_max_neighbors(self):
@@ -394,8 +389,8 @@ class AdaGAE():
         # threshold = 0.5
         # connections = (recons > threshold).type(torch.IntTensor).cuda()
         # weights = weights * connections
-        norm_adj = get_normalized_adjacency_matrix(self.adj)
-        return self.adj, norm_adj, self.raw_adj
+        self.norm_adj = get_normalized_adjacency_matrix(self.adj)
+        return self.adj, self.norm_adj, self.raw_adj
 
 
     def build_loss(self, recons):
@@ -426,6 +421,9 @@ class AdaGAE():
         loss += local_distance_preserving_loss
         tensorboard.add_scalar(TOTAL_LOSS_LABEL, loss.item(), self.global_step)
 
+        self.adj.to('cpu')
+        self.raw_adj.to('cpu')
+
         return loss
 
     def cal_clustering_metric(self, feature_matrix, predicted_labels):
@@ -450,13 +448,13 @@ class AdaGAE():
         self.global_step += 1
         self.iteration += 1
         action = action.detach().to('cpu').numpy()
-        self.current_lambda = action[0].item()
+        self.current_lambda = action[0]
         tensorboard.add_scalar(LAMBDA_LABEL, self.current_lambda, self.global_step)
-        self.current_sparsity = int(action[1].item())
+        self.current_sparsity = int(action[1])
         tensorboard.add_scalar(SPARSITY_LABEL, self.current_sparsity, self.global_step)
-        self.current_genomic_slope = action[2].item()
+        self.current_genomic_slope = action[2]
         tensorboard.add_scalar(SLOPE_LABEL, self.current_genomic_slope, self.global_step)
-        self.current_genetic_balance_factor = action[3].item()
+        self.current_genetic_balance_factor = action[3]
         tensorboard.add_scalar(GENETIC_BALANCE_FACTOR_LABEL, self.current_genetic_balance_factor, self.global_step)
 
         self.gae_nn.optimizer.zero_grad()
@@ -465,8 +463,6 @@ class AdaGAE():
         recons = self.gae_nn(self.norm_adj)
         loss = self.build_loss(recons)
 
-        self.adj = self.adj.cpu()
-        self.raw_adj = self.raw_adj.cpu()
         torch.cuda.empty_cache()
         loss.backward()
         self.gae_nn.optimizer.step()
@@ -479,6 +475,7 @@ class AdaGAE():
     @profile(output_file='profiling_adagae')
     def dummy_run(self):
 
+        self.gae_nn.to(self.device)
         for epoch in tqdm(range(max_epoch)):
             self.epoch_losses = []
             for i in range(max_iter):
@@ -490,16 +487,19 @@ class AdaGAE():
                 reward, loss, done_flag = self.step(dummy_action)
                 self.epoch_losses.append(loss.item())
 
-                #adj = adj.to(self.device)
-                #raw_adj = raw_adj.to(self.device)
-
+            update = False
+            if self.current_genomic_slope > min_genomic_slope:
+                self.current_genomic_slope -= genomic_slope_decrement
+                update = True
             if (not bounded_sparsity) or (self.current_sparsity < self.max_sparsity):
-                self.update_graph(epoch + 1)
-                if (epoch > 1) and (epoch % 10 == 0): self.clustering()
                 self.current_sparsity += sparsity_increment
-                if self.current_genomic_slope > 0.05:
-                    self.current_genomic_slope -= genomic_slope_decrement
-            else:
+                update = True
+            if update: self.update_graph(epoch + 1)
+
+            if (epoch > 1) and (epoch % 10 == 0): self.clustering()
+
+            if bounded_sparsity and (self.current_sparsity >= self.max_sparsity):
+                self.current_sparsity = int(self.max_neighbors)
                 break
 
             mean_loss = sum(self.epoch_losses) / len(self.epoch_losses)
@@ -554,7 +554,7 @@ class AdaGAE():
         # Notice that the link distance matrix has already self loop weight information
         current_link_score = fast_genomic_distance_to_similarity(links, genomic_C, current_genomic_slope)
 
-        if balance_genetic_information:
+        if balance_genomic_information:
             # We know that, in the (quasi) simple dist_to_score model, range of link scores go from 0 to 1.
             # We scale the link information to the p distribution.
             current_link_score *= (torch.max(weights).item() * genetic_balance_factor)
@@ -653,27 +653,28 @@ class AdaGAE():
 ## HYPER-PARAMS
 ###########
 
-genomic_C = 3e4
-genes_to_pick = 20
+genomic_C = 1e5
+genes_to_pick = 0
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 max_iter = 50
-max_epoch = 120
-sparsity_increment = 1
+max_epoch = 100
+sparsity_increment = 5
 learning_rate = 5 * 10 ** -3
-init_sparsity = 3
-init_genomic_slope = current_genomic_slope = 1
-genomic_slope_decrement = 0.04
+init_sparsity = 150
+init_genomic_slope = current_genomic_slope = 0.2
+genomic_slope_decrement = 0
 num_clusters = 20
 init_lambda = 4.0
-genetic_balance_factor = 3
+add_self_loops = False
+balance_genomic_information = False
+genetic_balance_factor = 0
+min_genomic_slope = 0.05
 bounded_sparsity = False
-regularized_distance = True
+regularized_distance = False
 CCRE_dist_reg_factor = 10.5
-balance_genetic_information = True
-self_loops_in_genomic_distance = False
 
 if __name__ == '__main__':
-    tensorboard = SummaryWriter(LOG_DIR + '/new_structure3')
+    tensorboard = SummaryWriter(LOG_DIR + '/lambda_8_gbf_0.8_dynamicGS')
 
     link_ds, ccre_ds = load_data(datapath, genes_to_pick)
 
