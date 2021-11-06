@@ -9,7 +9,7 @@
 #!unzip ngrok-stable-linux-amd64.zip
 
 #import os
-#LOG_DIR = 'runs'
+#LOG_DIR = '/content/DIAGdrive/MyDrive/GE_Datasets/official_logs/'
 #os.makedirs(LOG_DIR, exist_ok=True)
 #get_ipython().system_raw(
 #    'tensorboard --logdir {} --host 0.0.0.0 --port 6006 &'
@@ -33,6 +33,7 @@ datapath = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\GE_Datasets\\'
 
 reports_path = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\RL_developmental_studies\\Reports\\'
 
+LOG_DIR = 'local_runs/'
 
 
 ##COPY TO NOTEBOOK FROM HERE!!!###
@@ -336,7 +337,7 @@ class AdaGAE(torch.nn.Module):
         # return torch.sigmoid(self.embedding.matmul(torch.t(self.embedding)))
 
     def update_graph(self, epoch):
-        print('updating graph Laplacian with neighbors: ', self.current_sparsity)
+        print('updating graph Laplacian with sparsity: ', self.current_sparsity,' and gs: ',self.current_genomic_slope)
         tensorboard.add_scalar(NUM_NEIGHBORS_LABEL, self.current_sparsity, epoch * max_iter)
         weights, raw_weights = self.cal_weights_via_CAN(self.embedding.t())
         weights = weights.detach()
@@ -428,11 +429,12 @@ class AdaGAE(torch.nn.Module):
                 weights = weights.to(self.device)
                 raw_weights = raw_weights.to(self.device)
 
+            if self.current_genomic_slope > min_genomic_slope:
+                    self.current_genomic_slope -= genomic_slope_decrement
             if (not bounded_sparsity) or (self.current_sparsity < self.max_sparsity):
                 weights, normalized_adj_matrix, raw_weights = self.update_graph(epoch+1)
                 if (epoch > 1) and (epoch % 10 == 0): self.clustering()
                 self.current_sparsity += sparsity_increment
-                self.current_genomic_slope -= genomic_slope_decrement
             else:
                 self.current_sparsity = int(self.max_neighbors)
                 break
@@ -584,8 +586,6 @@ class AdaGAE(torch.nn.Module):
 
         return mapper, prediction
 
-
-
 ###########
 ## HYPER-PARAMS
 ###########
@@ -605,7 +605,7 @@ lam = 4.0
 add_self_loops = False
 balance_genomic_information = False
 genetic_balance_factor = None
-
+min_genomic_slope = 0.05
 bounded_sparsity = False
 regularized_distance = False
 CCRE_dist_reg_factor = 10.5
@@ -614,7 +614,7 @@ CCRE_dist_reg_factor = 10.5
 
 if __name__ == '__main__':
 
-    tensorboard = SummaryWriter()
+    tensorboard = SummaryWriter(LOG_DIR+'/lambda_8_gbf_0.8_dynamicGS')
 
     link_ds, ccre_ds = load_data(datapath, genes_to_pick)
 
@@ -627,8 +627,6 @@ if __name__ == '__main__':
     input_dim = X.shape[1]
     layers = [input_dim, 24 ,12]
 
-    print('-----lambda={}, neighbors={}, num_clusters={}, gen_C={}, max_iter={}, max_epoch={}'
-          .format(lam, init_sparsity, num_clusters, genomic_C, max_iter, max_epoch))
     gae = AdaGAE(X,
                  layers=layers,
                  device=device,
