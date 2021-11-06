@@ -202,7 +202,9 @@ def get_genomic_distance_matrix(link_ds):
 
     dense_A = np.zeros((entity_number, entity_number))
     dense_A.fill(np.inf)
-    np.fill_diagonal(dense_A, 0)
+    if self_loops_in_genomic_distance:
+        np.fill_diagonal(dense_A, 0)
+
     print('processing genomic distances...')
 
     for index, row in tqdm(link_ds.reset_index().iterrows()):
@@ -668,6 +670,7 @@ bounded_sparsity = False
 regularized_distance = True
 CCRE_dist_reg_factor = 10.5
 balance_genetic_information = True
+self_loops_in_genomic_distance = False
 
 if __name__ == '__main__':
     tensorboard = SummaryWriter(LOG_DIR + '/new_structure3')
