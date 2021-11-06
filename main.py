@@ -515,10 +515,7 @@ class AdaGAE(torch.nn.Module):
                 # weights, Laplacian, raw_weights = self.update_graph_entropy(recons)
 
                 if (epoch > 1) and (epoch % 10 == 0):
-                    if epoch % 30 == 0:
-                        visual = True
-                    else:
-                        visual = False
+                    visual = True
                     self.clustering(weights, visual=visual)
 
                 self.num_neighbors += self.inc_neighbors
