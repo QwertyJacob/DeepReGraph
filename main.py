@@ -635,7 +635,7 @@ add_self_loops = False
 balance_genomic_information = False
 
 bounded_sparsity = False
-regularized_distance = True
+regularized_distance = False
 CCRE_dist_reg_factor = 10.5
 
 
