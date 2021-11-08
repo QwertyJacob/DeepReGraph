@@ -46,6 +46,9 @@ import pstats
 from functools import wraps
 import pandas as pd
 import numpy as np
+import io
+import PIL.Image
+from torchvision.transforms import ToTensor
 
 from sklearn.metrics import calinski_harabasz_score
 from sklearn.cluster import KMeans
@@ -284,6 +287,11 @@ LOCALDISTPRESERVING_LABEL: str = 'LocalDistPreservingPenalty'
 TOTAL_LOSS_LABEL: str = 'Total_Loss'
 LAMBDA_LABEL: str = 'Lambda'
 GENETIC_BALANCE_FACTOR_LABEL: str = 'GeneticBalanceFactor'
+COMB_CH_SCORE_TAG: str = 'CombinedCHScore'
+GE_CH_SCORE_TAG: str = 'GeneCHScore'
+CCRE_CH_SCORE_TAG: str = 'CCRECHScore'
+REWARD_TAG: str = 'Reward'
+UMAP_CALSS_PLOT_TAG: str = 'UMAPClassPlot'
 
 class AdaGAE_NN(torch.nn.Module):
 
@@ -465,8 +473,22 @@ class AdaGAE():
         loss.backward()
         self.gae_nn.optimizer.step()
 
-        reward = 0
         done_flag = False
+
+        comb_ch_score, ge_ch_score, ccre_ch_score = 0,0,0
+
+        if self.iteration % 10 == 0:
+            visual_clustering = False
+            if self.iteration % (10*max_iter) == 0:
+                visual_clustering = True
+            comb_ch_score, ge_ch_score, ccre_ch_score = self.clustering(visual_clustering)
+            tensorboard.add_scalar(COMB_CH_SCORE_TAG, comb_ch_score, self.global_step)
+            tensorboard.add_scalar(GE_CH_SCORE_TAG, ge_ch_score, self.global_step)
+            tensorboard.add_scalar(CCRE_CH_SCORE_TAG, ccre_ch_score, self.global_step)
+
+        reward = 1/(loss.item()+1) + comb_ch_score/5000 + ge_ch_score/1 + ccre_ch_score/300
+        tensorboard.add_scalar(REWARD_TAG, reward, self.global_step)
+
         return reward, loss, done_flag
 
 
@@ -493,8 +515,6 @@ class AdaGAE():
                 self.current_sparsity += sparsity_increment
                 update = True
             if update: self.update_graph()
-
-            if (epoch > 1) and (epoch % 10 == 0): self.clustering()
 
             if bounded_sparsity and (self.current_sparsity >= self.max_sparsity):
                 self.current_sparsity = int(self.max_neighbors)
@@ -552,10 +572,10 @@ class AdaGAE():
         # Notice that the link distance matrix has already self loop weight information
         current_link_score = fast_genomic_distance_to_similarity(links, genomic_C, current_genomic_slope)
 
-        if balance_genomic_information:
+        if self.current_genetic_balance_factor != 0:
             # We know that, in the (quasi) simple dist_to_score model, range of link scores go from 0 to 1.
             # We scale the link information to the p distribution.
-            current_link_score *= (torch.max(weights).item() * genetic_balance_factor)
+            current_link_score *= (torch.max(weights).item() * self.current_genetic_balance_factor)
 
         current_link_score = torch.Tensor(current_link_score).to(device)
 
@@ -579,9 +599,6 @@ class AdaGAE():
         prediction = km.predict(embedding)
         ch_score, ge_ch_score_raw, ccre_ch_score_raw = self.cal_clustering_metric(embedding, prediction)
         cpu_embedding = embedding
-
-        print(' k-means --- ch_score: %5.4f, ge_raw_ch_score: %5.4f, ccre_raw_ch_score: %5.4f' % (
-            ch_score, ge_ch_score_raw, ccre_ch_score_raw))
 
         if visual:
             umap_embedding = umap.UMAP(
@@ -624,7 +641,19 @@ class AdaGAE():
                             alpha=alphas[idx],
                             s=cluster_marker_size)
             plt.legend()
+            self.send_image_to_tensorboard(plt)
             plt.show()
+
+        return ch_score, ge_ch_score_raw, ccre_ch_score_raw
+
+
+    def send_image_to_tensorboard(self, plt):
+        buf = io.BytesIO()
+        plt.savefig(buf, format='jpeg')
+        buf.seek(0)
+        image = PIL.Image.open(buf)
+        image = ToTensor()(image).squeeze(0)
+        tensorboard.add_image(UMAP_CALSS_PLOT_TAG, image, self.global_step)
 
     def visual_eval(self, n_neighbors=30, min_dist=0):
 
@@ -651,7 +680,7 @@ class AdaGAE():
 ## HYPER-PARAMS
 ###########
 
-genomic_C = 1e5
+genomic_C = 5e4
 genes_to_pick = 0
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 max_iter = 50
@@ -664,7 +693,6 @@ genomic_slope_decrement = 0
 num_clusters = 20
 init_lambda = 4.0
 add_self_loops = False
-balance_genomic_information = False
 genetic_balance_factor = 0
 min_genomic_slope = 0.05
 bounded_sparsity = False
