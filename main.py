@@ -287,7 +287,6 @@ LOCALDISTPRESERVING_LABEL: str = 'LocalDistPreservingPenalty'
 TOTAL_LOSS_LABEL: str = 'Total_Loss'
 LAMBDA_LABEL: str = 'Lambda'
 GENETIC_BALANCE_FACTOR_LABEL: str = 'GeneticBalanceFactor'
-COMB_CH_SCORE_TAG: str = 'CombinedCHScore'
 GE_CH_SCORE_TAG: str = 'GeneCHScore'
 CCRE_CH_SCORE_TAG: str = 'CCRECHScore'
 REWARD_TAG: str = 'Reward'
@@ -432,13 +431,12 @@ class AdaGAE():
 
         return loss
 
-    def cal_clustering_metric(self, feature_matrix, predicted_labels):
+    def cal_clustering_metric(self, predicted_labels):
         # silhouette = silhouette_score(feature_matrix, predicted_labels)
         # davies_bouldin = davies_bouldin_score(feature_matrix, predicted_labels)
         # return silhouette, davies_bouldin
-        ch_score = calinski_harabasz_score(feature_matrix, predicted_labels)
         ge_ch_raw, ccre_ch_raw = self.get_raw_ch_score(predicted_labels)
-        return ch_score, ge_ch_raw, ccre_ch_raw
+        return ge_ch_raw, ccre_ch_raw
 
     def get_raw_ch_score(self, predicted_labels):
 
@@ -475,18 +473,17 @@ class AdaGAE():
 
         done_flag = False
 
-        comb_ch_score, ge_ch_score, ccre_ch_score = 0,0,0
+        ge_ch_score, ccre_ch_score = 0,0,0
 
         if self.iteration % 10 == 0:
             visual_clustering = False
             if self.iteration % (10*max_iter) == 0:
                 visual_clustering = True
-            comb_ch_score, ge_ch_score, ccre_ch_score = self.clustering(visual_clustering)
-            tensorboard.add_scalar(COMB_CH_SCORE_TAG, comb_ch_score, self.global_step)
+            ge_ch_score, ccre_ch_score = self.clustering(visual_clustering)
             tensorboard.add_scalar(GE_CH_SCORE_TAG, ge_ch_score, self.global_step)
             tensorboard.add_scalar(CCRE_CH_SCORE_TAG, ccre_ch_score, self.global_step)
 
-        reward = 1/(loss.item()+1) + comb_ch_score/5000 + ge_ch_score/1 + ccre_ch_score/300
+        reward = 1/(loss.item()+1) + ge_ch_score/1 + ccre_ch_score/300
         tensorboard.add_scalar(REWARD_TAG, reward, self.global_step)
 
         return reward, loss, done_flag
@@ -597,7 +594,7 @@ class AdaGAE():
         embedding = self.gae_nn.embedding.detach().cpu().numpy()
         km = KMeans(n_clusters=num_clusters).fit(embedding)
         prediction = km.predict(embedding)
-        ch_score, ge_ch_score_raw, ccre_ch_score_raw = self.cal_clustering_metric(embedding, prediction)
+        ge_ch_score_raw, ccre_ch_score_raw = self.cal_clustering_metric(prediction)
         cpu_embedding = embedding
 
         if visual:
@@ -644,7 +641,7 @@ class AdaGAE():
             self.send_image_to_tensorboard(plt)
             plt.show()
 
-        return ch_score, ge_ch_score_raw, ccre_ch_score_raw
+        return ge_ch_score_raw, ccre_ch_score_raw
 
 
     def send_image_to_tensorboard(self, plt):
@@ -660,9 +657,8 @@ class AdaGAE():
         embedding = self.gae_nn.embedding.detach().cpu().numpy()
         km = KMeans(n_clusters=num_clusters).fit(embedding)
         prediction = km.predict(embedding)
-        ch_score, ge_ch_score_raw, ccre_ch_score_raw = self.cal_clustering_metric(embedding, prediction)
-        print('EVAL ch_score: %5.4f, ge_raw_ch_score: %5.4f, ccre_raw_ch_score: %5.4f' % (
-            ch_score, ge_ch_score_raw, ccre_ch_score_raw))
+        ge_ch_score_raw, ccre_ch_score_raw = self.cal_clustering_metric(prediction)
+        print('EVAL ge_raw_ch_score: %5.4f, ccre_raw_ch_score: %5.4f' % (ge_ch_score_raw, ccre_ch_score_raw))
         class_label = np.array(['genes'] * ge_count + ['ccres'] * ccre_count)
         mapper = umap.UMAP(
             n_neighbors=n_neighbors,
