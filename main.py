@@ -380,9 +380,7 @@ class AdaGAE():
         size = self.X.shape[0]
         return 2.0 * size / num_clusters
 
-    def update_graph(self, epoch):
-        print('updating A hat with sparsity: ', self.current_sparsity, ' and gs: ', self.current_genomic_slope)
-
+    def update_graph(self):
         self.adj, self.raw_adj = self.cal_weights_via_CAN(self.gae_nn.embedding.t())
         self.adj = self.adj.detach()
         self.raw_adj = self.raw_adj.detach()
@@ -494,7 +492,7 @@ class AdaGAE():
             if (not bounded_sparsity) or (self.current_sparsity < self.max_sparsity):
                 self.current_sparsity += sparsity_increment
                 update = True
-            if update: self.update_graph(epoch + 1)
+            if update: self.update_graph()
 
             if (epoch > 1) and (epoch % 10 == 0): self.clustering()
 
