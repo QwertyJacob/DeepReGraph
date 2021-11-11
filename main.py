@@ -362,7 +362,8 @@ class AdaGAE():
         if not self.pre_trained: self.init_embedding()
 
     def init_adj_matrices(self):
-        tensorboard.add_scalar(SPARSITY_LABEL, self.current_sparsity, self.global_step)
+        if not eval:
+            tensorboard.add_scalar(SPARSITY_LABEL, self.current_sparsity, self.global_step)
         # adj is A tilded, it is the symmetric modification of the p distribution
         # raw_adj is the p distribution before the symetrization.
         if self.pre_trained:
@@ -608,7 +609,8 @@ class AdaGAE():
             clusterer = hdbscan.HDBSCAN(min_cluster_size=100, min_samples=20)
             prediction = clusterer.fit_predict(umap_embedding)
             self.current_cluster_number = len(np.unique(prediction))
-            tensorboard.add_scalar(CLUSTER_NUMBER_LABEL, self.current_cluster_number, self.global_step)
+            if not eval:
+                tensorboard.add_scalar(CLUSTER_NUMBER_LABEL, self.current_cluster_number, self.global_step)
             self.plot_clustering(prediction, umap_embedding)
             self.plot_classes(umap_embedding)
 
@@ -636,7 +638,8 @@ class AdaGAE():
                         label='Cluster' + str(cluster),
                         s=cluster_marker_size)
         plt.legend()
-        self.send_image_to_tensorboard(plt, UMAP_CLUSTER_PLOT_TAG)
+        if not eval:
+            self.send_image_to_tensorboard(plt, UMAP_CLUSTER_PLOT_TAG)
         plt.show()
 
     def plot_classes(self, umap_embedding):
@@ -656,7 +659,8 @@ class AdaGAE():
                         alpha=alphas[idx],
                         s=cluster_marker_size)
         plt.legend()
-        self.send_image_to_tensorboard(plt, UMAP_CLASS_PLOT_TAG)
+        if not eval:
+            self.send_image_to_tensorboard(plt, UMAP_CLASS_PLOT_TAG)
         plt.show()
 
 
@@ -692,6 +696,7 @@ class AdaGAE():
 ## HYPER-PARAMS
 ###########
 
+eval = False
 genomic_C = 1e4
 genes_to_pick = 0
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
