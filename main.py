@@ -290,6 +290,7 @@ LAMBDA_LABEL: str = 'Lambda'
 GENETIC_BALANCE_FACTOR_LABEL: str = 'GeneticBalanceFactor'
 GE_CH_SCORE_TAG: str = 'GeneCHScore'
 CCRE_CH_SCORE_TAG: str = 'CCRECHScore'
+HETEROGENEITY_SCORE_TAG: str = 'HeterogeneityScore'
 REWARD_TAG: str = 'Reward'
 UMAP_CLASS_PLOT_TAG: str = 'UMAPClassPlot'
 UMAP_CLUSTER_PLOT_TAG: str = 'UMAPClusterPlot'
@@ -441,7 +442,23 @@ class AdaGAE():
         # davies_bouldin = davies_bouldin_score(feature_matrix, predicted_labels)
         # return silhouette, davies_bouldin
         ge_ch_raw, ccre_ch_raw = self.get_raw_ch_score(predicted_labels)
-        return ge_ch_raw, ccre_ch_raw
+        mean_heterogeneity = self.get_mean_heterogeneity(predicted_labels)
+        return ge_ch_raw, ccre_ch_raw, mean_heterogeneity
+
+    def get_mean_heterogeneity(self, predicted_labels):
+        balance_scores = []
+        le_classes = np.unique(predicted_labels)
+        if -1 in le_classes:
+            le_classes = le_classes[1:]
+        classes = ['genes', 'ccres']
+        class_labels = np.array([classes[0]] * ge_count + [classes[1]] * ccre_count)
+        for cluster in le_classes:
+            cluster_points = _safe_indexing(class_labels, predicted_labels == cluster)
+            _, counts = np.unique(cluster_points, return_counts=True)
+            balance_scores.append(1 / abs(counts[0] - (sum(counts) / 2)))
+
+        return sum(balance_scores) / len(balance_scores)
+
 
     def get_raw_ch_score(self, predicted_labels):
 
@@ -478,18 +495,19 @@ class AdaGAE():
 
         done_flag = False
 
-        ge_ch_score, ccre_ch_score = 0,0
+        ge_ch_score, ccre_ch_score, heterogeneity_score = 0,0,0
 
         if self.iteration % 10 == 0:
             visual_clustering = False
             if self.iteration % (10*max_iter) == 0:
                 visual_clustering = True
-            ge_ch_score, ccre_ch_score = self.clustering(visual_clustering)
+            ge_ch_score, ccre_ch_score, heterogeneity_score = self.clustering(visual_clustering)
             tensorboard.add_scalar(GE_CH_SCORE_TAG, ge_ch_score, self.global_step)
             tensorboard.add_scalar(CCRE_CH_SCORE_TAG, ccre_ch_score, self.global_step)
+            tensorboard.add_scalar(HETEROGENEITY_SCORE_TAG, heterogeneity_score, self.global_step)
 
         #reward = 1/(loss.item()+1) + ge_ch_score/1 + ccre_ch_score/300
-        reward = ge_ch_score/5 + ccre_ch_score/300
+        reward = ge_ch_score/5 + ccre_ch_score/300 + 5*heterogeneity_score
 
         tensorboard.add_scalar(REWARD_TAG, reward, self.global_step)
 
@@ -618,9 +636,7 @@ class AdaGAE():
             km = KMeans(n_clusters=self.current_cluster_number).fit(cpu_embedding)
             prediction = km.predict(cpu_embedding)
 
-        ge_ch_score_raw, ccre_ch_score_raw = self.cal_clustering_metric(prediction)
-
-        return ge_ch_score_raw, ccre_ch_score_raw
+        return self.cal_clustering_metric(prediction)
 
 
     def plot_clustering(self, prediction, umap_embedding):
@@ -677,8 +693,10 @@ class AdaGAE():
         embedding = self.gae_nn.embedding.detach().cpu().numpy()
         km = KMeans(n_clusters=self.current_cluster_number).fit(embedding)
         prediction = km.predict(embedding)
-        ge_ch_score_raw, ccre_ch_score_raw = self.cal_clustering_metric(prediction)
-        print('EVAL ge_raw_ch_score: %5.4f, ccre_raw_ch_score: %5.4f' % (ge_ch_score_raw, ccre_ch_score_raw))
+        ge_ch_score_raw, ccre_ch_score_raw, mean_heterogeneity = self.cal_clustering_metric(prediction)
+        print('EVAL ge_raw_ch_score: %5.4f, ccre_raw_ch_score: %5.4f, mean_heterogeneity_score: %5.4f' % (ge_ch_score_raw,
+                                                                                                          ccre_ch_score_raw,
+                                                                                                          mean_heterogeneity))
         class_label = np.array(['genes'] * ge_count + ['ccres'] * ccre_count)
         mapper = umap.UMAP(
             n_neighbors=n_neighbors,
@@ -698,13 +716,13 @@ class AdaGAE():
 
 eval = False
 genomic_C = 1e4
-genes_to_pick = 0
+genes_to_pick = 100
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 max_iter = 50
 max_epoch = 100
 sparsity_increment = 5
 learning_rate = 5 * 10 ** -3
-init_sparsity = 150
+init_sparsity = 15
 init_genomic_slope = current_genomic_slope = 0.2
 genomic_slope_decrement = 0
 init_cluster_num = 20
