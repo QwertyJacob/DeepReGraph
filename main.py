@@ -487,7 +487,9 @@ class AdaGAE():
             tensorboard.add_scalar(GE_CH_SCORE_TAG, ge_ch_score, self.global_step)
             tensorboard.add_scalar(CCRE_CH_SCORE_TAG, ccre_ch_score, self.global_step)
 
-        reward = 1/(loss.item()+1) + ge_ch_score/1 + ccre_ch_score/300
+        #reward = 1/(loss.item()+1) + ge_ch_score/1 + ccre_ch_score/300
+        reward = ge_ch_score/5 + ccre_ch_score/300
+
         tensorboard.add_scalar(REWARD_TAG, reward, self.global_step)
 
         return reward, loss, done_flag
@@ -690,7 +692,7 @@ class AdaGAE():
 ## HYPER-PARAMS
 ###########
 
-genomic_C = 5e4
+genomic_C = 1e4
 genes_to_pick = 0
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 max_iter = 50
