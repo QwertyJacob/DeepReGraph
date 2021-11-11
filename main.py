@@ -716,13 +716,13 @@ class AdaGAE():
 
 eval = False
 genomic_C = 1e4
-genes_to_pick = 100
+genes_to_pick = 0
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 max_iter = 50
 max_epoch = 100
 sparsity_increment = 5
 learning_rate = 5 * 10 ** -3
-init_sparsity = 15
+init_sparsity = 150
 init_genomic_slope = current_genomic_slope = 0.2
 genomic_slope_decrement = 0
 init_cluster_num = 20
