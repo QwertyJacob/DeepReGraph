@@ -457,16 +457,34 @@ class AdaGAE():
             _, counts = np.unique(cluster_points, return_counts=True)
             balance_scores.append(1 / abs(counts[0] - (sum(counts) / 2)))
 
-        return sum(balance_scores) / len(balance_scores)
+        mean_heterogeneity = sum(balance_scores) / len(balance_scores)
+
+        # it is easier to be heterogeneous when clusters are less, so the score
+        # is better if the clusternumber is higher:
+        return mean_heterogeneity * len(le_classes)
 
 
     def get_raw_ch_score(self, predicted_labels):
 
         ges = self.X.detach().cpu().numpy()[:ge_count]
-        ge_ch = calinski_harabasz_score(ges, predicted_labels[:ge_count])
+        gene_labels = predicted_labels[:ge_count]
+        if -1 in np.unique(gene_labels):
+            scattered_gene_indexes = np.where(gene_labels==-1)
+            clustered_genes = np.delete(ges,scattered_gene_indexes,0)
+            valid_gene_labels = np.delete(gene_labels,scattered_gene_indexes)
+            ge_ch = calinski_harabasz_score(clustered_genes, valid_gene_labels)
+        else:
+            ge_ch = calinski_harabasz_score(ges, gene_labels)
 
         ccre_as = self.X.detach().cpu().numpy()[ge_count:]
-        ccre_ch = calinski_harabasz_score(ccre_as, predicted_labels[ge_count:])
+        ccre_labels = predicted_labels[ge_count:]
+        if -1 in np.unique(ccre_labels):
+            scattered_ccre_indexes = np.where(ccre_labels==-1)
+            clustered_ccres = np.delete(ccre_as, scattered_ccre_indexes,0)
+            valid_ccre_labels = np.delete(ccre_labels, scattered_ccre_indexes)
+            ccre_ch = calinski_harabasz_score(clustered_ccres, valid_ccre_labels)
+        else:
+            ccre_ch = calinski_harabasz_score(ccre_as, ccre_labels)
 
         return ge_ch, ccre_ch
 
@@ -735,7 +753,7 @@ regularized_distance = False
 CCRE_dist_reg_factor = 10.5
 
 if __name__ == '__main__':
-    tensorboard = SummaryWriter(LOG_DIR + '/lambda_8_gbf_0.8_dynamicGS')
+    tensorboard = SummaryWriter(LOG_DIR + '/samplerun')
 
     link_ds, ccre_ds = load_data(datapath, genes_to_pick)
 
