@@ -554,9 +554,7 @@ class AdaGAE():
                 self.epoch_losses.append(loss.item())
 
             update = False
-            if self.current_genomic_slope > min_genomic_slope:
-                self.current_genomic_slope -= genomic_slope_decrement
-                update = True
+
             if (not bounded_sparsity) or (self.current_sparsity < self.max_sparsity):
                 self.current_sparsity += sparsity_increment
                 update = True
@@ -747,8 +745,7 @@ max_epoch = 100
 sparsity_increment = 5
 learning_rate = 5 * 10 ** -3
 init_sparsity = 150
-init_genomic_slope = current_genomic_slope = 0.2
-genomic_slope_decrement = 0
+init_genomic_slope = 0.2
 init_cluster_num = 20
 init_lambda = 6.0
 add_self_loops = False
