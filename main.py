@@ -750,7 +750,6 @@ init_cluster_num = 20
 init_lambda = 6.0
 add_self_loops = False
 genetic_balance_factor = 0
-min_genomic_slope = 0.05
 bounded_sparsity = False
 regularized_distance = False
 CCRE_dist_reg_factor = 10.5
