@@ -29,7 +29,6 @@
 #################
 
 from tqdm import tqdm as tqdm
-
 datapath = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\GE_Datasets\\'
 
 reports_path = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\RL_developmental_studies\\Reports\\'
@@ -457,7 +456,7 @@ class AdaGAE():
         for cluster in le_classes:
             cluster_points = _safe_indexing(class_labels, predicted_labels == cluster)
             _, counts = np.unique(cluster_points, return_counts=True)
-            denominator = 1e-10 + abs(counts[0] - (sum(counts) / 2))
+            denominator = 1 + abs(counts[0] - (sum(counts) / 2))
             balance_scores.append(1 / denominator)
 
         mean_heterogeneity = sum(balance_scores) / len(balance_scores)
