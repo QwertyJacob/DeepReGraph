@@ -288,6 +288,7 @@ LOCALDISTPRESERVING_LABEL: str = 'LocalDistPreservingPenalty'
 TOTAL_LOSS_LABEL: str = 'Total_Loss'
 LAMBDA_LABEL: str = 'Lambda'
 GENETIC_BALANCE_FACTOR_LABEL: str = 'GeneticBalanceFactor'
+GENOMIC_C_LABEL: str = 'GenomicC'
 GE_CH_SCORE_TAG: str = 'GeneCHScore'
 CCRE_CH_SCORE_TAG: str = 'CCRECHScore'
 HETEROGENEITY_SCORE_TAG: str = 'HeterogeneityScore'
@@ -356,6 +357,7 @@ class AdaGAE():
         self.gae_nn = AdaGAE_NN(self.X, self.device, self.pre_trained).to(self.device)
         self.current_sparsity = init_sparsity + 1
         self.current_genomic_slope = init_genomic_slope
+        self.current_genomic_C = init_genomic_C
         self.current_genetic_balance_factor = genetic_balance_factor
         self.current_lambda = init_lambda
         self.current_cluster_number = init_cluster_num
@@ -500,6 +502,8 @@ class AdaGAE():
         tensorboard.add_scalar(SLOPE_LABEL, self.current_genomic_slope, self.global_step)
         self.current_genetic_balance_factor = action[3]
         tensorboard.add_scalar(GENETIC_BALANCE_FACTOR_LABEL, self.current_genetic_balance_factor, self.global_step)
+        self.current_genomic_C = action[4]
+        tensorboard.add_scalar(GENOMIC_C_LABEL, self.current_genomic_C, self.global_step)
 
         self.gae_nn.optimizer.zero_grad()
 
@@ -542,7 +546,8 @@ class AdaGAE():
                 dummy_action = torch.Tensor([self.current_lambda,
                                              self.current_sparsity,
                                              self.current_genomic_slope,
-                                             self.current_genetic_balance_factor]).to(self.device)
+                                             self.current_genetic_balance_factor,
+                                             self.current_genomic_C]).to(self.device)
 
                 reward, loss, done_flag = self.step(dummy_action)
                 self.epoch_losses.append(loss.item())
@@ -610,7 +615,7 @@ class AdaGAE():
         # on the explicit graph information.
 
         # Notice that the link distance matrix has already self loop weight information
-        current_link_score = fast_genomic_distance_to_similarity(links, genomic_C, current_genomic_slope)
+        current_link_score = fast_genomic_distance_to_similarity(links, self.current_genomic_C, self.current_genomic_slope)
 
         if self.current_genetic_balance_factor != 0:
             # We know that, in the (quasi) simple dist_to_score model, range of link scores go from 0 to 1.
@@ -733,8 +738,8 @@ class AdaGAE():
 ###########
 
 eval = False
-genomic_C = 1e4
-genes_to_pick = 0
+init_genomic_C = 1e5
+genes_to_pick = 50
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 max_iter = 50
 max_epoch = 100
@@ -744,7 +749,7 @@ init_sparsity = 150
 init_genomic_slope = current_genomic_slope = 0.2
 genomic_slope_decrement = 0
 init_cluster_num = 20
-init_lambda = 4.0
+init_lambda = 6.0
 add_self_loops = False
 genetic_balance_factor = 0
 min_genomic_slope = 0.05
