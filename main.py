@@ -295,6 +295,8 @@ REWARD_TAG: str = 'Reward'
 UMAP_CLASS_PLOT_TAG: str = 'UMAPClassPlot'
 UMAP_CLUSTER_PLOT_TAG: str = 'UMAPClusterPlot'
 CLUSTER_NUMBER_LABEL: str= 'ClusterNumber'
+GENE_CLUSTERING_COMPLETENESS_TAG: str = 'GeneClusteringCompleteness'
+CCRE_CLUSTERING_COMPLETENESS_TAG: str = 'CCREClusteringCompleteness'
 
 class AdaGAE_NN(torch.nn.Module):
 
@@ -442,9 +444,9 @@ class AdaGAE():
         # silhouette = silhouette_score(feature_matrix, predicted_labels)
         # davies_bouldin = davies_bouldin_score(feature_matrix, predicted_labels)
         # return silhouette, davies_bouldin
-        ge_ch_raw, ccre_ch_raw = self.get_raw_ch_score(predicted_labels)
+        ge_ch_raw, ccre_ch_raw, ge_clust_completeness, ccre_clust_completeness = self.get_raw_ch_score(predicted_labels)
         mean_heterogeneity = self.get_mean_heterogeneity(predicted_labels)
-        return ge_ch_raw, ccre_ch_raw, mean_heterogeneity
+        return ge_ch_raw, ccre_ch_raw, mean_heterogeneity, ge_clust_completeness, ccre_clust_completeness
 
     def get_mean_heterogeneity(self, predicted_labels):
         balance_scores = []
@@ -470,25 +472,33 @@ class AdaGAE():
 
         ges = self.X.detach().cpu().numpy()[:ge_count]
         gene_labels = predicted_labels[:ge_count]
+        scattered_genes = 0
         if -1 in np.unique(gene_labels):
             scattered_gene_indexes = np.where(gene_labels==-1)
+            scattered_genes = len(scattered_gene_indexes[0])
             clustered_genes = np.delete(ges,scattered_gene_indexes,0)
             valid_gene_labels = np.delete(gene_labels,scattered_gene_indexes)
             ge_ch = calinski_harabasz_score(clustered_genes, valid_gene_labels)
         else:
             ge_ch = calinski_harabasz_score(ges, gene_labels)
 
+        ge_clustering_completeness = 1 - scattered_genes/ge_count
+
         ccre_as = self.X.detach().cpu().numpy()[ge_count:]
         ccre_labels = predicted_labels[ge_count:]
+        scattered_ccres = 0
         if -1 in np.unique(ccre_labels):
             scattered_ccre_indexes = np.where(ccre_labels==-1)
+            scattered_ccres = len(scattered_ccre_indexes[0])
             clustered_ccres = np.delete(ccre_as, scattered_ccre_indexes,0)
             valid_ccre_labels = np.delete(ccre_labels, scattered_ccre_indexes)
             ccre_ch = calinski_harabasz_score(clustered_ccres, valid_ccre_labels)
         else:
             ccre_ch = calinski_harabasz_score(ccre_as, ccre_labels)
 
-        return ge_ch, ccre_ch
+        ccre_clustering_completeness = 1 - scattered_ccres/ccre_count
+
+        return ge_ch, ccre_ch, ge_clustering_completeness, ccre_clustering_completeness
 
     def step(self, action):
         self.global_step += 1
@@ -517,19 +527,30 @@ class AdaGAE():
 
         done_flag = False
 
-        ge_ch_score, ccre_ch_score, heterogeneity_score = 0,0,0
+        ge_ch_score, ccre_ch_score, heterogeneity_score, ge_comp, ccre_comp = 0,0,0,0,0
 
         if self.iteration % 10 == 0:
             visual_clustering = False
             if self.iteration % (10*max_iter) == 0:
                 visual_clustering = True
-            ge_ch_score, ccre_ch_score, heterogeneity_score = self.clustering(visual_clustering)
+            ge_ch_score, ccre_ch_score, heterogeneity_score, ge_comp, ccre_comp = self.clustering(visual_clustering)
             tensorboard.add_scalar(GE_CH_SCORE_TAG, ge_ch_score, self.global_step)
             tensorboard.add_scalar(CCRE_CH_SCORE_TAG, ccre_ch_score, self.global_step)
             tensorboard.add_scalar(HETEROGENEITY_SCORE_TAG, heterogeneity_score, self.global_step)
+            tensorboard.add_scalar(GENE_CLUSTERING_COMPLETENESS_TAG, ge_comp, self.global_step)
+            tensorboard.add_scalar(CCRE_CLUSTERING_COMPLETENESS_TAG, ccre_comp, self.global_step)
 
         #reward = 1/(loss.item()+1) + ge_ch_score/1 + ccre_ch_score/300
-        reward = ge_ch_score/5 + ccre_ch_score/300 + 5*heterogeneity_score
+
+        scaled_ge_ch_score = ge_ch_score/100
+        scaled_ccre_ch_score = ccre_ch_score/400
+        scaled_heterogeneity = heterogeneity_score/20
+
+        reward = (0.25 * scaled_ge_ch_score) + \
+                 (0.25 * scaled_ccre_ch_score) + \
+                 (0.25 * scaled_heterogeneity) + \
+                 (0.125 * ge_comp) + \
+                 (0.125 * ccre_comp)
 
         tensorboard.add_scalar(REWARD_TAG, reward, self.global_step)
 
@@ -714,10 +735,12 @@ class AdaGAE():
         embedding = self.gae_nn.embedding.detach().cpu().numpy()
         km = KMeans(n_clusters=self.current_cluster_number).fit(embedding)
         prediction = km.predict(embedding)
-        ge_ch_score_raw, ccre_ch_score_raw, mean_heterogeneity = self.cal_clustering_metric(prediction)
-        print('EVAL ge_raw_ch_score: %5.4f, ccre_raw_ch_score: %5.4f, mean_heterogeneity_score: %5.4f' % (ge_ch_score_raw,
-                                                                                                          ccre_ch_score_raw,
-                                                                                                          mean_heterogeneity))
+        scores = self.cal_clustering_metric(prediction)
+        print('EVAL ge_raw_ch_score: %5.4f, '
+              'ccre_raw_ch_score: %5.4f, '
+              'mean_heterogeneity_score: %5.4f, '
+              'gene_clustering_completeness: %5.4f, '
+              'ccre_clustering_completeness: %5.4f,' % (scores[0],scores[1],scores[2],scores[3], scores[4]))
         class_label = np.array(['genes'] * ge_count + ['ccres'] * ccre_count)
         mapper = umap.UMAP(
             n_neighbors=n_neighbors,
@@ -743,7 +766,7 @@ max_iter = 50
 max_epoch = 100
 sparsity_increment = 5
 learning_rate = 5 * 10 ** -3
-init_sparsity = 150
+init_sparsity = 1
 init_genomic_slope = 0.2
 init_cluster_num = 20
 init_lambda = 6.0
