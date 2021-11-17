@@ -449,7 +449,7 @@ class AdaGAE():
         return ge_ch_raw, ccre_ch_raw, mean_heterogeneity, ge_clust_completeness, ccre_clust_completeness
 
     def get_mean_heterogeneity(self, predicted_labels):
-        balance_scores = []
+        cluster_heterogeneities = []
         le_classes = np.unique(predicted_labels)
         if -1 in le_classes:
             le_classes = le_classes[1:]
@@ -457,11 +457,16 @@ class AdaGAE():
         class_labels = np.array([classes[0]] * ge_count + [classes[1]] * ccre_count)
         for cluster in le_classes:
             cluster_points = _safe_indexing(class_labels, predicted_labels == cluster)
-            _, counts = np.unique(cluster_points, return_counts=True)
-            denominator = 1 + abs(counts[0] - (sum(counts) / 2))
-            balance_scores.append(1 / denominator)
+            _, elems_per_class = np.unique(cluster_points, return_counts=True)
+            cluster_dimension = sum(elems_per_class)
+            absolute_omogeneity = abs(elems_per_class[0] - (cluster_dimension / 2))
+            # omogeneity distribution tends to be more long tailed as the cluster dimension grows.
+            # so we normalize omogeneity between clusters:
+            relative_omogeneity = absolute_omogeneity / (cluster_dimension**0.5)
+            current_heterogeneity = 1 / (1 + relative_omogeneity)
+            cluster_heterogeneities.append(current_heterogeneity)
 
-        mean_heterogeneity = sum(balance_scores) / len(balance_scores)
+        mean_heterogeneity = sum(cluster_heterogeneities) / len(cluster_heterogeneities)
 
         # it is easier to be heterogeneous when clusters are less, so the score
         # is better if the clusternumber is higher:
