@@ -586,7 +586,7 @@ class AdaGAE():
             if update: self.update_graph()
 
             if bounded_sparsity and (self.current_sparsity >= self.max_sparsity):
-                self.current_sparsity = int(self.max_neighbors)
+                self.current_sparsity = int(self.max_sparsity)
                 break
 
             mean_loss = sum(self.epoch_losses) / len(self.epoch_losses)
