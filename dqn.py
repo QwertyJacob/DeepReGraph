@@ -19,11 +19,24 @@ import math
 from torch.utils.tensorboard import SummaryWriter
 
 REWARD_LABEL = 'REWARD'
-
+GENE_DISPERSION_DELTA = 'GENE_DISPERSION_DELTA'
+CCRE_DISPERION_DELTA = 'CCRE_DISPERION_DELTA'
+HETEROGENEITY_DELTA = 'HETEROGENEITY_DELTA'
+DISTANCE_SCORE_DELTA = 'DISTANCE_SCORE_DELTA'
+WHOLE_GENE_DISPERSION_DELTA = 'WHOLE_GENE_DISPERSION_DELTA'
+WHOLE_CCRE_DISPERION_DELTA = 'WHOLE_CCRE_DISPERION_DELTA'
+WHOLE_HETEROGENEITY_DELTA = 'WHOLE_HETEROGENEITY_DELTA'
+WHOLE_DISTANCE_SCORE_DELTA = 'WHOLE_DISTANCE_SCORE_DELTA'
+WHOLE_GENE_DISPERSION = 'WHOLE_GENE_DISPERSION'
+WHOLE_CCRE_DISPERION = 'WHOLE_CCRE_DISPERION'
+WHOLE_HETEROGENEITY = 'WHOLE_HETEROGENEITY'
+WHOLE_DISTANCE_SCORE = 'WHOLE_DISTANCE_SCORE'
+EPSILON_EGREEDY = 'EPSILON_EGREEDY'
 
 def calculate_epsilon(steps_done):
     epsilon = egreedy_final + (egreedy - egreedy_final) * \
               math.exp(-1. * steps_done / egreedy_decay )
+    tensorboard.add_scalar(EPSILON_EGREEDY,epsilon,steps_done)
     return epsilon
 
 
@@ -513,11 +526,11 @@ target_q_clust = Q_Clust(device)
 loss_func = torch.nn.MSELoss()
 
 # hyper-params:
-training_episodes = 2
+training_episodes = 20
 double_dqn = True
 clip_error = True
 
-learning_rate = 1e-3
+learning_rate = 3e-4
 batch_size = 64
 gamma = 0.99
 update_target_frequency = 10000
@@ -525,10 +538,10 @@ save_model_frequency = 1000000
 memory = ExperienceReplay(1000000)
 egreedy_final = 1e-2
 egreedy = .99
-egreedy_decay = 1e6
+egreedy_decay = 2.5e4
 
 
-HETEROGENEITY_SCORE_UPDATE = 5
+HETEROGENEITY_SCORE_UPDATE = 1
 DISTANCE_SCORE_UPDATE_INTERVAL = HETEROGENEITY_SCORE_UPDATE * 2
 SPARSE_REWARD_INTERVAL = DISTANCE_SCORE_UPDATE_INTERVAL * 2
 VERY_SPARSE_REWARD_INTERVAL = SPARSE_REWARD_INTERVAL * 2
@@ -548,7 +561,7 @@ if eval:
     q_clust.eval()
 
 
-tensorboard = SummaryWriter(LOG_DIR + '/first')
+tensorboard = SummaryWriter(LOG_DIR + '/third')
 
 
 
@@ -628,25 +641,68 @@ for episode in range(training_episodes):
 
         if decoded_action != -1:
 
-            reward = 1e4 * (previous_gene_dispersion - np.nan_to_num(gene_mean_dispersions)[decoded_action]) + \
-                     1e4 * (previous_ccre_dispersion - np.nan_to_num(ccre_mean_dispersions)[decoded_action])
+            gene_dispersion_delta = 1e4 * (previous_gene_dispersion - np.nan_to_num(gene_mean_dispersions)[decoded_action])
+            ccre_dispersion_delta = 1e4 * (previous_ccre_dispersion - np.nan_to_num(ccre_mean_dispersions)[decoded_action])
+
+            tensorboard.add_scalar(GENE_DISPERSION_DELTA, gene_dispersion_delta, step + (episode * element_count))
+            tensorboard.add_scalar(CCRE_DISPERION_DELTA, ccre_dispersion_delta, step + (episode * element_count))
+
+            reward = gene_dispersion_delta + ccre_dispersion_delta
 
             if step % HETEROGENEITY_SCORE_UPDATE == 0:
-                reward += 1e2 * (np.nan_to_num(cluster_heterogeneities)[decoded_action] - previous_heterogeneity)
-            if step % DISTANCE_SCORE_UPDATE_INTERVAL == 0:
-                reward += 1e5 * (np.nan_to_num(distance_scores)[decoded_action] - previous_distance_score)
-            if step % SPARSE_REWARD_INTERVAL == 0:
-                reward += (previous_whole_gene_dispersion - (np.mean(np.nan_to_num(gene_mean_dispersions)))) + \
-                          (previous_whole_ccre_dispersion - (np.mean(np.nan_to_num(ccre_mean_dispersions)))) + \
-                          ((np.mean(np.nan_to_num(cluster_heterogeneities))) - previous_whole_heterogeneity) + \
-                          ((np.mean(np.nan_to_num(distance_scores))) - previous_whole_distance_score)
-            if step % VERY_SPARSE_REWARD_INTERVAL == 0:
-                reward += 1 / 10 * (np.mean(np.nan_to_num(gene_mean_dispersions))) + \
-                          1 / 10 * (np.mean(np.nan_to_num(ccre_mean_dispersions))) + \
-                          5 * (np.mean(np.nan_to_num(cluster_heterogeneities))) + \
-                          500 * (np.mean(np.nan_to_num(distance_scores)))
 
+                heterogeneity_delta = 1e2 * (np.nan_to_num(cluster_heterogeneities)[decoded_action] - previous_heterogeneity)
+                tensorboard.add_scalar(HETEROGENEITY_DELTA, heterogeneity_delta, step + (episode * element_count))
+                reward += heterogeneity_delta
+
+            if step % DISTANCE_SCORE_UPDATE_INTERVAL == 0:
+
+                distance_score_delta = 1e5 * (np.nan_to_num(distance_scores)[decoded_action] - previous_distance_score)
+                tensorboard.add_scalar(DISTANCE_SCORE_DELTA, distance_score_delta, step + (episode * element_count))
+                reward += distance_score_delta
+
+            if step % SPARSE_REWARD_INTERVAL == 0:
+
+                whole_gene_disp_delta = (previous_whole_gene_dispersion - (np.mean(np.nan_to_num(gene_mean_dispersions))))
+                whole_ccre_disp_delta = (previous_whole_ccre_dispersion - (np.mean(np.nan_to_num(ccre_mean_dispersions))))
+                whole_heterogeneity_delta = ((np.mean(np.nan_to_num(cluster_heterogeneities))) - previous_whole_heterogeneity)
+                whole_distance_score_delta = ((np.mean(np.nan_to_num(distance_scores))) - previous_whole_distance_score)
+
+                tensorboard.add_scalar(WHOLE_GENE_DISPERSION_DELTA, whole_gene_disp_delta, step + (episode * element_count))
+                tensorboard.add_scalar(WHOLE_CCRE_DISPERION_DELTA, whole_ccre_disp_delta, step + (episode * element_count))
+                tensorboard.add_scalar(WHOLE_HETEROGENEITY_DELTA, whole_heterogeneity_delta, step + (episode * element_count))
+                tensorboard.add_scalar(WHOLE_DISTANCE_SCORE_DELTA, whole_distance_score_delta, step + (episode * element_count))
+
+                reward += whole_gene_disp_delta + \
+                          whole_ccre_disp_delta + \
+                          whole_heterogeneity_delta + \
+                          whole_distance_score_delta
+
+            '''
+            if step % VERY_SPARSE_REWARD_INTERVAL == 0:
+                
+                whole_gene_dispersions = 1 / 10 * (np.mean(np.nan_to_num(gene_mean_dispersions)))
+                whole_ccre_dipersions = 1 / 10 * (np.mean(np.nan_to_num(ccre_mean_dispersions)))
+                whole_heterogeneities = 5 * (np.mean(np.nan_to_num(cluster_heterogeneities))) 
+                whole_distance_scores = 500 * (np.mean(np.nan_to_num(distance_scores)))
+                
+                tensorboard.add_scalar(WHOLE_GENE_DISPERSION, whole_gene_dispersions,
+                                       step + (episode * element_count))
+                tensorboard.add_scalar(WHOLE_CCRE_DISPERION, whole_ccre_dipersions,
+                                       step + (episode * element_count))
+                tensorboard.add_scalar(WHOLE_HETEROGENEITY, whole_heterogeneities,
+                                       step + (episode * element_count))
+                tensorboard.add_scalar(WHOLE_DISTANCE_SCORE, whole_distance_scores,
+                                       step + (episode * element_count))
+
+                reward += whole_gene_dispersions + \
+                          whole_ccre_dipersions + \
+                          whole_heterogeneities + \
+                          whole_distance_scores
+            '''
             reward = reward[0]
+
+
         tensorboard.add_scalar(REWARD_LABEL,reward,step + (episode * element_count))
 
         # Computing done_signal
