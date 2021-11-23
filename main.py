@@ -516,7 +516,6 @@ class AdaGAE():
         self.current_genomic_slope = action[2]
         tensorboard.add_scalar(SLOPE_LABEL, self.current_genomic_slope, self.global_step)
         self.current_genetic_balance_factor = action[3]
-        tensorboard.add_scalar(GENETIC_BALANCE_FACTOR_LABEL, self.current_genetic_balance_factor, self.global_step)
         self.current_genomic_C = action[4]
         tensorboard.add_scalar(GENOMIC_C_LABEL, self.current_genomic_C, self.global_step)
 
@@ -645,6 +644,10 @@ class AdaGAE():
             # We know that, in the (quasi) simple dist_to_score model, range of link scores go from 0 to 1.
             # We scale the link information to the p distribution.
             current_link_score *= (torch.max(weights).item() * self.current_genetic_balance_factor)
+            tensorboard.add_scalar(GENETIC_BALANCE_FACTOR_LABEL, self.current_genetic_balance_factor, self.global_step)
+        else:
+            de_facto_gbf = 1 / (torch.max(weights).item())
+            tensorboard.add_scalar(GENETIC_BALANCE_FACTOR_LABEL, de_facto_gbf, self.global_step)
 
         current_link_score = torch.Tensor(current_link_score).to(device)
 
