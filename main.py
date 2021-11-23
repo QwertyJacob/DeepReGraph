@@ -561,11 +561,6 @@ class AdaGAE():
         return reward, loss, done_flag
 
 
-    def get_adaptive_gbf(self):
-
-        return self.global_step ** gbf_exp
-
-
     @profile(output_file='profiling_adagae')
     def dummy_run(self):
 
@@ -573,10 +568,6 @@ class AdaGAE():
         for epoch in tqdm(range(max_epoch)):
             self.epoch_losses = []
             for i in range(max_iter):
-
-                if adaptive_gbf:
-                    self.current_genetic_balance_factor = self.get_adaptive_gbf()
-
                 dummy_action = torch.Tensor([self.current_lambda,
                                              self.current_sparsity,
                                              self.current_genomic_slope,
@@ -792,9 +783,6 @@ genetic_balance_factor = 0
 bounded_sparsity = False
 regularized_distance = False
 CCRE_dist_reg_factor = 10.5
-adaptive_gbf = True
-gbf_exp = 0.4
-
 
 if __name__ == '__main__':
     tensorboard = SummaryWriter(LOG_DIR + '/samplerun')
