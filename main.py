@@ -793,19 +793,28 @@ bounded_sparsity = False
 regularized_distance = False
 CCRE_dist_reg_factor = 10.5
 
+
+link_ds, ccre_ds = load_data(datapath, genes_to_pick)
+
+X, ge_count, ccre_count = get_hybrid_feature_matrix(link_ds, ccre_ds)
+
+links = get_genomic_distance_matrix(link_ds)
+
+#POSITIVE_X
+#X += torch.abs(torch.min(X))
+
+X /= torch.max(X)
+X = torch.Tensor(X).to(device)
+input_dim = X.shape[1]
+layers = [input_dim, 24, 12]
+
+
+
 if __name__ == '__main__':
-    tensorboard = SummaryWriter(LOG_DIR + '/samplerun')
 
-    link_ds, ccre_ds = load_data(datapath, genes_to_pick)
+    modelname = '/some_model'
 
-    X, ge_count, ccre_count = get_hybrid_feature_matrix(link_ds, ccre_ds)
-
-    links = get_genomic_distance_matrix(link_ds)
-
-    X /= torch.max(X)
-    X = torch.Tensor(X).to(device)
-    input_dim = X.shape[1]
-    layers = [input_dim, 24, 12]
+    tensorboard = SummaryWriter(LOG_DIR + modelname)
 
     gae = AdaGAE(X,
                  device=device,
