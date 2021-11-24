@@ -457,9 +457,10 @@ class AdaGAE():
         class_labels = np.array([classes[0]] * ge_count + [classes[1]] * ccre_count)
         for cluster in le_classes:
             cluster_points = _safe_indexing(class_labels, predicted_labels == cluster)
-            _, elems_per_class = np.unique(cluster_points, return_counts=True)
-            cluster_dimension = sum(elems_per_class)
-            absolute_omogeneity = abs(elems_per_class[0] - (cluster_dimension / 2))
+            cluster_dimension = len(cluster_points)
+            cluster_gene_count = np.count_nonzero(cluster_points == 'gene')
+            cluster_ccre_count = np.count_nonzero(cluster_points == 'ccre')
+            absolute_omogeneity = abs(cluster_gene_count - (cluster_ccre_count / 2))
             # omogeneity distribution tends to be more long tailed as the cluster dimension grows.
             # so we normalize omogeneity between clusters:
             relative_omogeneity = absolute_omogeneity / (cluster_dimension**0.5)
@@ -468,9 +469,7 @@ class AdaGAE():
 
         mean_heterogeneity = sum(cluster_heterogeneities) / len(cluster_heterogeneities)
 
-        # it is easier to be heterogeneous when clusters are less, so the score
-        # is better if the clusternumber is higher:
-        return mean_heterogeneity * len(le_classes)
+        return mean_heterogeneity
 
 
     def get_raw_ch_score(self, predicted_labels):
@@ -767,7 +766,7 @@ class AdaGAE():
 
 
 def save(epoch):
-  torch.save(gae.gae_nn.state_dict(), datapath+'models/'+modelname+'_model_'+str(epoch)+'_epochs')
+  torch.save(gae.gae_nn.state_dict(), datapath+'models'+modelname+'_model_'+str(epoch)+'_epochs')
   torch.save(gae.gae_nn.embedding, datapath+'models'+modelname+'_embedding_'+str(epoch)+'_epochs')
 
 
