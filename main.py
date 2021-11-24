@@ -188,7 +188,7 @@ def get_weight_initial(shape):
 
 def fast_genomic_distance_to_similarity(link_matrix, c, d):
     '''
-    see https://www.desmos.com/calculator/frrfbs0tas
+    see https://www.desmos.com/calculator/bmxxh8sqra
     TODO play aroun'
     '''
     return 1 / (((link_matrix / c) ** (10 * d)) + 1)
@@ -567,6 +567,8 @@ class AdaGAE():
         self.gae_nn.to(self.device)
         for epoch in tqdm(range(max_epoch)):
             self.epoch_losses = []
+            if epoch % 20 == 0:
+              save(epoch)
             for i in range(max_iter):
                 dummy_action = torch.Tensor([self.current_lambda,
                                              self.current_sparsity,
@@ -644,7 +646,8 @@ class AdaGAE():
             # We know that, in the (quasi) simple dist_to_score model, range of link scores go from 0 to 1.
             # We scale the link information to the p distribution.
             current_link_score *= (torch.max(weights).item() * self.current_genetic_balance_factor)
-            tensorboard.add_scalar(GENETIC_BALANCE_FACTOR_LABEL, self.current_genetic_balance_factor, self.global_step)
+            if not eval:
+              tensorboard.add_scalar(GENETIC_BALANCE_FACTOR_LABEL, self.current_genetic_balance_factor, self.global_step)
         else:
             de_facto_gbf = 1 / (torch.max(weights).item())
             tensorboard.add_scalar(GENETIC_BALANCE_FACTOR_LABEL, de_facto_gbf, self.global_step)
@@ -760,6 +763,12 @@ class AdaGAE():
         # umap.plot.points(mapper, width=1500, height=1500, labels=primitive_clusters)
 
         return mapper, prediction
+
+
+
+def save(epoch):
+  torch.save(gae.gae_nn.state_dict(), datapath+'models/'+modelname+'_model_'+str(epoch)+'_epochs')
+  torch.save(gae.gae_nn.embedding, datapath+'models'+modelname+'_embedding_'+str(epoch)+'_epochs')
 
 
 ###########
