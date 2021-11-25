@@ -695,7 +695,11 @@ class AdaGAE():
 
             clusterer = hdbscan.HDBSCAN(min_cluster_size=100, min_samples=20)
             prediction = clusterer.fit_predict(umap_embedding)
-            self.current_cluster_number = len(np.unique(prediction))
+            clusters = np.unique(prediction)
+            if -1 in clusters:
+                self.current_cluster_number = len(clusters) - 1
+            else:
+                self.current_cluster_number = len(clusters)
             if not eval:
                 tensorboard.add_scalar(CLUSTER_NUMBER_LABEL, self.current_cluster_number, self.global_step)
             self.plot_clustering(prediction, umap_embedding)
@@ -793,7 +797,7 @@ def save(epoch):
 
 eval = False
 init_genomic_C = 1e5
-genes_to_pick = 500
+genes_to_pick = 50
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 max_iter = 50
 max_epoch = 100
