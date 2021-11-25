@@ -50,7 +50,6 @@ import PIL.Image
 from torchvision.transforms import ToTensor
 import hdbscan
 from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import calinski_harabasz_score
 from sklearn.cluster import KMeans
 from sklearn.utils import _safe_indexing
 
@@ -288,8 +287,8 @@ TOTAL_LOSS_LABEL: str = 'Total_Loss'
 LAMBDA_LABEL: str = 'Lambda'
 GENETIC_BALANCE_FACTOR_LABEL: str = 'GeneticBalanceFactor'
 GENOMIC_C_LABEL: str = 'GenomicC'
-GE_CH_SCORE_TAG: str = 'GeneCHScore'
-CCRE_CH_SCORE_TAG: str = 'CCRECHScore'
+GE_CC_SCORE_TAG: str = 'GeneCCScore'
+CCRE_CC_SCORE_TAG: str = 'CCRECCScore'
 HETEROGENEITY_SCORE_TAG: str = 'HeterogeneityScore'
 REWARD_TAG: str = 'Reward'
 UMAP_CLASS_PLOT_TAG: str = 'UMAPClassPlot'
@@ -350,6 +349,10 @@ class AdaGAE():
         self.pre_trained = pre_trained
         self.global_step = 0
         self.reset()
+
+        classes = ['gene', 'ccre']
+        self.class_label_array = np.array([classes[0]] * ge_count + [classes[1]] * ccre_count)
+        self.global_ccres_over_genes_ratio = (ccre_count / ge_count)
 
     def reset(self):
         self.iteration = 0
@@ -441,40 +444,54 @@ class AdaGAE():
         return loss
 
     def cal_clustering_metric(self, predicted_labels):
-        # silhouette = silhouette_score(feature_matrix, predicted_labels)
-        # davies_bouldin = davies_bouldin_score(feature_matrix, predicted_labels)
-        # return silhouette, davies_bouldin
-        ge_ch_raw, ccre_ch_raw, ge_clust_completeness, ccre_clust_completeness = self.get_raw_ch_score(predicted_labels)
+
+        ge_cc_raw, ccre_cc_raw, ge_clust_completeness, ccre_clust_completeness = self.get_raw_score(predicted_labels)
         mean_heterogeneity = self.get_mean_heterogeneity(predicted_labels)
-        return ge_ch_raw, ccre_ch_raw, mean_heterogeneity, ge_clust_completeness, ccre_clust_completeness
+        return ge_cc_raw, ccre_cc_raw, mean_heterogeneity, ge_clust_completeness, ccre_clust_completeness
 
     def get_mean_heterogeneity(self, predicted_labels):
         cluster_heterogeneities = []
         le_classes = np.unique(predicted_labels)
         if -1 in le_classes:
             le_classes = le_classes[1:]
-        classes = ['genes', 'ccres']
-        class_labels = np.array([classes[0]] * ge_count + [classes[1]] * ccre_count)
+
         for cluster in le_classes:
-            cluster_points = _safe_indexing(class_labels, predicted_labels == cluster)
-            cluster_dimension = len(cluster_points)
+            cluster_points = _safe_indexing(self.class_label_array, predicted_labels == cluster)
             cluster_gene_count = np.count_nonzero(cluster_points == 'gene')
             cluster_ccre_count = np.count_nonzero(cluster_points == 'ccre')
-            absolute_omogeneity = abs(cluster_gene_count - (cluster_ccre_count / 2))
-            # omogeneity distribution tends to be more long tailed as the cluster dimension grows.
-            # so we normalize omogeneity between clusters:
-            relative_omogeneity = absolute_omogeneity / (cluster_dimension**0.5)
-            current_heterogeneity = 1 / (1 + relative_omogeneity)
+            current_ccres_over_genes_ratio = cluster_ccre_count / 1 + cluster_gene_count
+            heterogeneity_drift = abs(current_ccres_over_genes_ratio - self.global_ccres_over_genes_ratio)
+            current_heterogeneity = 1 / (1 + heterogeneity_drift)
             cluster_heterogeneities.append(current_heterogeneity)
 
         mean_heterogeneity = sum(cluster_heterogeneities) / len(cluster_heterogeneities)
 
         return mean_heterogeneity
 
+    def get_mean_cluster_conciseness(self, data_points, labels):
 
-    def get_raw_ch_score(self, predicted_labels):
+        cluster_concisenesses = []
+        cluster_labels = np.unique(labels)
 
-        ges = self.X.detach().cpu().numpy()[:ge_count]
+        for k in cluster_labels:
+            cluster_k_components = data_points[labels == k]
+            centroid_k = np.mean(cluster_k_components, axis=0)
+            dispersion_vectors_k = (cluster_k_components - centroid_k) ** 2
+
+            gene_dispersions_k = np.sum(dispersion_vectors_k, axis=1)
+            gene_diameter_k = gene_dispersions_k.max()
+            if gene_diameter_k == 0:
+                mean_scaled_gene_dispersion_k = 0
+            else:
+                scaled_gene_dispersions_k = gene_dispersions_k / gene_diameter_k
+                mean_scaled_gene_dispersion_k = scaled_gene_dispersions_k.mean()
+            cluster_concisenesses.append(1 / (1 + mean_scaled_gene_dispersion_k))
+
+        return sum(cluster_concisenesses) / len(cluster_concisenesses)
+
+    def get_raw_score(self, predicted_labels):
+
+        ges = self.X.detach().cpu().numpy()[:ge_count][:,:8]
         gene_labels = predicted_labels[:ge_count]
         scattered_genes = 0
         if -1 in np.unique(gene_labels):
@@ -482,13 +499,13 @@ class AdaGAE():
             scattered_genes = len(scattered_gene_indexes[0])
             clustered_genes = np.delete(ges,scattered_gene_indexes,0)
             valid_gene_labels = np.delete(gene_labels,scattered_gene_indexes)
-            ge_ch = calinski_harabasz_score(clustered_genes, valid_gene_labels)
+            ge_cc = self.get_mean_cluster_conciseness(clustered_genes, valid_gene_labels)
         else:
-            ge_ch = calinski_harabasz_score(ges, gene_labels)
+            ge_cc = self.get_mean_cluster_conciseness(ges, gene_labels)
 
         ge_clustering_completeness = 1 - scattered_genes/ge_count
 
-        ccre_as = self.X.detach().cpu().numpy()[ge_count:]
+        ccre_as = self.X.detach().cpu().numpy()[ge_count:][:,8:]
         ccre_labels = predicted_labels[ge_count:]
         scattered_ccres = 0
         if -1 in np.unique(ccre_labels):
@@ -496,13 +513,13 @@ class AdaGAE():
             scattered_ccres = len(scattered_ccre_indexes[0])
             clustered_ccres = np.delete(ccre_as, scattered_ccre_indexes,0)
             valid_ccre_labels = np.delete(ccre_labels, scattered_ccre_indexes)
-            ccre_ch = calinski_harabasz_score(clustered_ccres, valid_ccre_labels)
+            ccre_ch = self.get_mean_cluster_conciseness(clustered_ccres, valid_ccre_labels)
         else:
-            ccre_ch = calinski_harabasz_score(ccre_as, ccre_labels)
+            ccre_ch = self.get_mean_cluster_conciseness(ccre_as, ccre_labels)
 
         ccre_clustering_completeness = 1 - scattered_ccres/ccre_count
 
-        return ge_ch, ccre_ch, ge_clustering_completeness, ccre_clustering_completeness
+        return ge_cc, ccre_ch, ge_clustering_completeness, ccre_clustering_completeness
 
     def step(self, action):
         self.global_step += 1
@@ -530,27 +547,27 @@ class AdaGAE():
 
         done_flag = False
 
-        ge_ch_score, ccre_ch_score, heterogeneity_score, ge_comp, ccre_comp = 0,0,0,0,0
+        gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp = 0,0,0,0,0
 
         if self.iteration % 10 == 0:
             visual_clustering = False
             if self.iteration % (10*max_iter) == 0:
                 visual_clustering = True
-            ge_ch_score, ccre_ch_score, heterogeneity_score, ge_comp, ccre_comp = self.clustering(visual_clustering)
-            tensorboard.add_scalar(GE_CH_SCORE_TAG, ge_ch_score, self.global_step)
-            tensorboard.add_scalar(CCRE_CH_SCORE_TAG, ccre_ch_score, self.global_step)
+            gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp = self.clustering(visual_clustering)
+            tensorboard.add_scalar(GE_CC_SCORE_TAG, gene_cc_score, self.global_step)
+            tensorboard.add_scalar(CCRE_CC_SCORE_TAG, ccre_cc_score, self.global_step)
             tensorboard.add_scalar(HETEROGENEITY_SCORE_TAG, heterogeneity_score, self.global_step)
             tensorboard.add_scalar(GENE_CLUSTERING_COMPLETENESS_TAG, ge_comp, self.global_step)
             tensorboard.add_scalar(CCRE_CLUSTERING_COMPLETENESS_TAG, ccre_comp, self.global_step)
 
         #reward = 1/(loss.item()+1) + ge_ch_score/1 + ccre_ch_score/300
 
-        scaled_ge_ch_score = ge_ch_score/100
-        scaled_ccre_ch_score = ccre_ch_score/400
+        scaled_ge_cc_score = gene_cc_score/100
+        scaled_ccre_cc_score = ccre_cc_score/400
         scaled_heterogeneity = heterogeneity_score/20
 
-        reward = (0.25 * scaled_ge_ch_score) + \
-                 (0.25 * scaled_ccre_ch_score) + \
+        reward = (0.25 * scaled_ge_cc_score) + \
+                 (0.25 * scaled_ccre_cc_score) + \
                  (0.25 * scaled_heterogeneity) + \
                  (0.125 * ge_comp) + \
                  (0.125 * ccre_comp)
@@ -776,7 +793,7 @@ def save(epoch):
 
 eval = False
 init_genomic_C = 1e5
-genes_to_pick = 50
+genes_to_pick = 500
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 max_iter = 50
 max_epoch = 100
