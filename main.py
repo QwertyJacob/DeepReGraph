@@ -304,9 +304,9 @@ class AdaGAE_NN(torch.nn.Module):
     def __init__(self,
                  data_matrix,
                  device,
-                 pre_trained=False,
-                 pre_trained_state_dict='models/combined_adagae_z12_initk150_150epochs',
-                 pre_computed_embedding='models/combined_adagae_z12_initk150_150epochs_embedding'
+                 pre_trained,
+                 pre_trained_state_dict,
+                 pre_computed_embedding
                  ):
         super(AdaGAE_NN, self).__init__()
         self.device = device
@@ -318,8 +318,8 @@ class AdaGAE_NN(torch.nn.Module):
         self.W1 = get_weight_initial([self.input_dim, self.mid_dim])
         self.W2 = get_weight_initial([self.mid_dim, self.embedding_dim])
         if pre_trained:
-            self.load_state_dict(torch.load(datapath + pre_trained_state_dict))
-            self.embedding = torch.load(datapath + pre_computed_embedding)
+            self.load_state_dict(torch.load(datapath + pre_trained_state_dict, map_location=torch.device(self.device)))
+            self.embedding = torch.load(datapath + pre_computed_embedding, map_location=torch.device(self.device))
         self.optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
 
     def forward(self, norm_adj_matrix):
@@ -336,7 +336,9 @@ class AdaGAE():
 
     def __init__(self, X,
                  device=None,
-                 pre_trained=False):
+                 pre_trained=False,
+                 pre_trained_state_dict='models/combined_adagae_z12_initk150_150epochs',
+                 pre_computed_embedding='models/combined_adagae_z12_initk150_150epochs_embedding'):
 
         super(AdaGAE, self).__init__()
 
@@ -349,6 +351,8 @@ class AdaGAE():
             self.max_sparsity = None
         print('Neighbors will increment up to ', self.max_sparsity)
         self.pre_trained = pre_trained
+        self.pre_trained_state_dict = pre_trained_state_dict
+        self.pre_computed_embedding = pre_computed_embedding
         self.global_step = 0
         self.reset()
 
@@ -360,7 +364,11 @@ class AdaGAE():
         self.iteration = 0
         self.gae_nn = None
         torch.cuda.empty_cache()
-        self.gae_nn = AdaGAE_NN(self.X, self.device, self.pre_trained).to(self.device)
+        self.gae_nn = AdaGAE_NN(self.X,
+                                self.device,
+                                self.pre_trained,
+                                self.pre_trained_state_dict,
+                                self.pre_computed_embedding).to(self.device)
         self.current_sparsity = init_sparsity + 1
         self.current_genomic_slope = init_genomic_slope
         self.current_genomic_C = init_genomic_C
@@ -468,9 +476,10 @@ class AdaGAE():
             # If we have an "only ccres" or "only genes" cluster, we put distance score directly to zero
             distance_score = 0
             if current_distance_score_matrix.shape[0] != 0 and current_distance_score_matrix.shape[1] != 0:
-                # Notice we dont have to normalize this score with the dimension of the cluster,
-                # because the mean function is already doing it.
-                distance_score = current_distance_score_matrix.mean()
+                # Notice that when the clusters are bigger, then it will be more difficult
+                # to reach a good distance score. That is why we now give a  normalization factor:
+                cluster_dim = current_distance_score_matrix.shape[0] + current_distance_score_matrix.shape[1]
+                distance_score = current_distance_score_matrix.mean() * (cluster_dim**0.3)
             distance_scores.append(distance_score)
 
         return sum(distance_scores) / len(distance_scores)
@@ -573,7 +582,7 @@ class AdaGAE():
 
         done_flag = False
 
-        gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = 0, 0, 0, 0, 0
+        gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = 0, 0, 0, 0, 0, 0
 
         if self.iteration % 10 == 0:
             visual_clustering = False
@@ -825,8 +834,9 @@ def save(epoch):
 ###########
 
 eval = False
+pre_trained = False
 init_genomic_C = 1e5
-genes_to_pick = 500
+genes_to_pick = 50
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 max_iter = 50
 max_epoch = 100
@@ -863,7 +873,8 @@ if __name__ == '__main__':
 
     gae = AdaGAE(X,
                  device=device,
-                 pre_trained=False)
-    gae.dummy_run()
+                 pre_trained=pre_trained,
+                 pre_trained_state_dict='models\\gC_3e5_gS0.4\\gC_3e5_gS0.4_model_140_epochs',
+                 pre_computed_embedding='models\\gC_3e5_gS0.4\\gC_3e5_gS0.4_embedding_140_epochs')
 
-    # tensorboard.close()
+    gae.dummy_run()
