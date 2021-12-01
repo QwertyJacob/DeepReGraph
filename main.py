@@ -696,21 +696,18 @@ class AdaGAE():
         self.current_link_score = fast_genomic_distance_to_similarity(links, self.current_genomic_C,
                                                                       self.current_genomic_slope)
 
-        if self.current_genetic_balance_factor != 0:
-            # We know that, in the (quasi) simple dist_to_score model, range of link scores go from 0 to 1.
-            # We scale the link information to the p distribution.
-            scaled_link_score = self.current_link_score * (
-                        torch.max(weights).item() * self.current_genetic_balance_factor)
-            scaled_link_score = torch.Tensor(scaled_link_score).to(device)
-            if not eval:
-                tensorboard.add_scalar(GENETIC_BALANCE_FACTOR_LABEL, self.current_genetic_balance_factor,
-                                       self.global_step)
-        else:
-            de_facto_gbf = 1 / (torch.max(weights).item())
-            tensorboard.add_scalar(GENETIC_BALANCE_FACTOR_LABEL, de_facto_gbf, self.global_step)
-            scaled_link_score = torch.Tensor(self.current_link_score).to(device)
 
-        weights += scaled_link_score
+        link_scores_tensor = torch.Tensor(self.current_link_score)
+        element_max_distance_scores = torch.max(link_scores_tensor, dim=0)[0]
+        element_max_similarity_scores = torch.max(weights, dim=0)[0]
+        scaled_link_scores = (link_scores_tensor.t() * element_max_similarity_scores / element_max_distance_scores)
+        scaled_link_scores = scaled_link_scores.t() * self.current_genetic_balance_factor
+
+        if not eval:
+            tensorboard.add_scalar(GENETIC_BALANCE_FACTOR_LABEL, self.current_genetic_balance_factor,self.global_step)
+
+
+        weights += scaled_link_scores
         # row-wise normalization.
         weights /= weights.sum(dim=1).reshape([size, 1])
 
