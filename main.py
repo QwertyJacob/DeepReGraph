@@ -372,7 +372,7 @@ class AdaGAE():
         self.current_sparsity = init_sparsity + 1
         self.current_genomic_slope = init_genomic_slope
         self.current_genomic_C = init_genomic_C
-        self.current_genetic_balance_factor = genetic_balance_factor
+        self.current_genetic_balance_factor = init_gbf
         self.current_lambda = init_lambda
         self.current_cluster_number = init_cluster_num
         self.init_adj_matrices()
@@ -620,7 +620,7 @@ class AdaGAE():
         self.gae_nn.to(self.device)
         for epoch in tqdm(range(max_epoch)):
             self.epoch_losses = []
-            if epoch % 20 == 0:
+            if epoch % 10 == 0:
                 save(epoch)
             for i in range(max_iter):
                 dummy_action = torch.Tensor([self.current_lambda,
@@ -637,6 +637,10 @@ class AdaGAE():
             if (not bounded_sparsity) or (self.current_sparsity < self.max_sparsity):
                 self.current_sparsity += sparsity_increment
                 update = True
+            if self.current_genetic_balance_factor > min_gbf:
+                self.current_genetic_balance_factor -= 3
+                update = True
+
             if update: self.update_graph()
 
             if bounded_sparsity and (self.current_sparsity >= self.max_sparsity):
@@ -844,7 +848,8 @@ init_genomic_slope = 0.2
 init_cluster_num = 12
 init_lambda = 3.0
 add_self_loops = False
-genetic_balance_factor = 1
+init_gbf = 40
+min_gbf = 1
 bounded_sparsity = False
 regularized_distance = False
 CCRE_dist_reg_factor = 10.5
