@@ -205,7 +205,7 @@ def get_genomic_distance_matrix(link_ds):
 
     dense_A = np.zeros((entity_number, entity_number))
     dense_A.fill(np.inf)
-    if add_self_loops:
+    if add_self_loops_genomic:
         np.fill_diagonal(dense_A, 0)
     print('processing genomic distances...')
 
@@ -312,7 +312,8 @@ class AdaGAE_NN(torch.nn.Module):
                  device,
                  pre_trained,
                  pre_trained_state_dict,
-                 pre_computed_embedding
+                 pre_computed_embedding,
+                 gcn
                  ):
         super(AdaGAE_NN, self).__init__()
         self.device = device
@@ -321,23 +322,36 @@ class AdaGAE_NN(torch.nn.Module):
         self.mid_dim = layers[1]
         self.input_dim = layers[0]
         self.data_matrix = data_matrix.to(device)
-        self.W1_neigh = get_weight_initial([self.input_dim, self.mid_dim])
-        self.W1_self = get_weight_initial([self.input_dim, self.mid_dim])
-        self.W2_neigh = get_weight_initial([self.mid_dim, self.embedding_dim])
-        self.W2_self = get_weight_initial([self.mid_dim, self.embedding_dim])
+        self.gcn = gcn
+        if self.gcn:
+            self.W1 = get_weight_initial([self.input_dim, self.mid_dim])
+            self.W2 = get_weight_initial([self.mid_dim, self.embedding_dim])
+        else:
+            # basic GNN model (hamilton's book)
+            self.W1_neigh = get_weight_initial([self.input_dim, self.mid_dim])
+            self.W1_self = get_weight_initial([self.input_dim, self.mid_dim])
+            self.W2_neigh = get_weight_initial([self.mid_dim, self.embedding_dim])
+            self.W2_self = get_weight_initial([self.mid_dim, self.embedding_dim])
+
         if pre_trained:
             self.load_state_dict(torch.load(datapath + pre_trained_state_dict, map_location=torch.device(self.device)))
             self.embedding = torch.load(datapath + pre_computed_embedding, map_location=torch.device(self.device))
         self.optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
 
     def forward(self, norm_adj_matrix):
-        embedding_1 = norm_adj_matrix.mm(self.data_matrix.matmul(self.W1_neigh))
-        embedding_1 += self.data_matrix.matmul(self.W1_self)
-        embedding_1 = torch.relu(embedding_1)
+        if self.gcn:
+            embedding = norm_adj_matrix.mm(self.data_matrix.matmul(self.W1))
+            embedding = torch.relu(embedding)
+            self.embedding = norm_adj_matrix.mm(embedding.matmul(self.W2))
+        else:
+            # basic GNN model (hamilton's book)
+            embedding_1 = norm_adj_matrix.mm(self.data_matrix.matmul(self.W1_neigh))
+            embedding_1 += self.data_matrix.matmul(self.W1_self)
+            embedding_1 = torch.relu(embedding_1)
 
-        embedding = (norm_adj_matrix.matmul(embedding_1)).matmul(self.W2_neigh)
-        embedding += embedding_1.matmul(self.W2_self)
-        self.embedding = torch.relu(embedding)
+            embedding = (norm_adj_matrix.matmul(embedding_1)).matmul(self.W2_neigh)
+            embedding += embedding_1.matmul(self.W2_self)
+            self.embedding = torch.relu(embedding)
 
         distances = distance(self.embedding.t(), self.embedding.t())
         softmax = torch.nn.Softmax(dim=1)
@@ -382,7 +396,8 @@ class AdaGAE():
                                 self.device,
                                 self.pre_trained,
                                 self.pre_trained_state_dict,
-                                self.pre_computed_embedding).to(self.device)
+                                self.pre_computed_embedding,
+                                gcn).to(self.device)
         self.current_sparsity = init_sparsity + 1
         self.current_genomic_slope = init_genomic_slope
         self.current_genomic_C = init_genomic_C
@@ -751,11 +766,6 @@ class AdaGAE():
 
         # equation 20 in the paper. notice that self.current_sparsity = k.
         weights = torch.div(T, self.current_sparsity * top_k - sum_top_k)
-        # Self-loop can generate too much oversmoothing according to Hamilton.
-        # but if we take out self-loops then we should change from GCN to other
-        # GNN with the explicit {UPDATE} function like concatenation ??
-        # TODO see what happens if we introduce the following line of code:
-        # weights.fill_diagonal_(0)
         T = None
         top_k = None
         sum_top_k = None
@@ -781,8 +791,10 @@ class AdaGAE():
 
         weights += scaled_link_scores
 
-        # self-loop avoidance (changed to basic GNN model as in hamilton's book)
-        weights.fill_diagonal_(0)
+
+        if not add_self_loops_euclidean:
+            # self-loop avoidance (changed to basic GNN model as in hamilton's book)
+            weights.fill_diagonal_(0)
 
         # row-wise normalization.
         weights /= weights.sum(dim=1).reshape([size, 1])
@@ -919,7 +931,9 @@ init_sparsity = 30
 init_genomic_slope = 0.2
 init_cluster_num = 12
 init_lambda = 3.0
-add_self_loops = False
+add_self_loops_genomic = False
+add_self_loops_euclidean = False
+gcn = False
 init_gbf = 7
 min_gbf = 1
 bounded_sparsity = False
