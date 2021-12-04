@@ -286,6 +286,7 @@ def load_data(datapath, num_of_genes=0, tight=True):
 ########
 
 SPARSITY_LABEL: str = 'Sparsity'
+GENE_SPARSITY_LABEL: str = 'Gene_Sparsity'
 SLOPE_LABEL: str = 'GeneticSlope'
 KL_DIVERGENCE_LABEL: str = 'KL_divergence'
 LOCALDISTPRESERVING_LABEL: str = 'LocalDistPreservingPenalty'
@@ -399,6 +400,7 @@ class AdaGAE():
                                 self.pre_computed_embedding,
                                 gcn).to(self.device)
         self.current_sparsity = init_sparsity + 1
+        self.current_gene_sparsity = math.floor(self.current_sparsity / self.global_ccres_over_genes_ratio)
         self.current_genomic_slope = init_genomic_slope
         self.current_genomic_C = init_genomic_C
         self.current_genetic_balance_factor = init_gbf
@@ -410,6 +412,7 @@ class AdaGAE():
     def init_adj_matrices(self):
         if not eval:
             tensorboard.add_scalar(SPARSITY_LABEL, self.current_sparsity, self.global_step)
+            tensorboard.add_scalar(GENE_SPARSITY_LABEL, self.current_gene_sparsity, self.global_step)
         # adj is A tilded, it is the symmetric modification of the p distribution
         # raw_adj is the p distribution before the symetrization.
         if self.pre_trained:
@@ -592,7 +595,9 @@ class AdaGAE():
         self.current_lambda = action[0]
         tensorboard.add_scalar(LAMBDA_LABEL, self.current_lambda, self.global_step)
         self.current_sparsity = int(action[1])
+        self.current_gene_sparsity = math.floor(self.current_sparsity / self.global_ccres_over_genes_ratio)
         tensorboard.add_scalar(SPARSITY_LABEL, self.current_sparsity, self.global_step)
+        tensorboard.add_scalar(GENE_SPARSITY_LABEL, self.current_gene_sparsity, self.global_step)
         self.current_genomic_slope = action[2]
         tensorboard.add_scalar(SLOPE_LABEL, self.current_genomic_slope, self.global_step)
         self.current_genetic_balance_factor = action[3]
@@ -704,22 +709,21 @@ class AdaGAE():
         distances = torch.max(distances, torch.t(distances))
         sorted_distances, _ = distances.sort(dim=1)
 
-        current_gene_sparsity = math.floor(self.current_sparsity / self.global_ccres_over_genes_ratio)
-        assert current_gene_sparsity != 0
+        assert self.current_gene_sparsity != 0
 
         # distance to the k-th nearest neighbor ONLY GENES:
-        top_k_genes = sorted_distances[:ge_count, current_gene_sparsity]
+        top_k_genes = sorted_distances[:ge_count, self.current_gene_sparsity]
         top_k_genes = torch.t(top_k_genes.repeat(size, 1)) + 10 ** -10
 
         # summatory of the nearest k distances ONLY GENES:
-        sum_top_k_genes = torch.sum(sorted_distances[:ge_count, 0:current_gene_sparsity], dim=1)
+        sum_top_k_genes = torch.sum(sorted_distances[:ge_count, 0:self.current_gene_sparsity], dim=1)
         sum_top_k_genes = torch.t(sum_top_k_genes.repeat(size, 1))
 
         # numerator of equation 20 in the paper ONLY GENES
         T_genes = top_k_genes - distances[:ge_count,]
 
         # equation 20 in the paper. notice that self.current_sparsity = k. ONLY GENES
-        weights_genes = torch.div(T_genes, current_gene_sparsity * top_k_genes - sum_top_k_genes)
+        weights_genes = torch.div(T_genes, self.current_gene_sparsity * top_k_genes - sum_top_k_genes)
 
 
         # distance to the k-th nearest neighbor ONLY CCRES:
