@@ -46,6 +46,7 @@ from functools import wraps
 import pandas as pd
 import numpy as np
 import io
+import math
 import PIL.Image
 from torchvision.transforms import ToTensor
 import hdbscan
@@ -360,11 +361,12 @@ class AdaGAE():
         self.pre_trained_state_dict = pre_trained_state_dict
         self.pre_computed_embedding = pre_computed_embedding
         self.global_step = 0
+        self.global_ccres_over_genes_ratio = (ccre_count / ge_count)
         self.reset()
 
         classes = ['gene', 'ccre']
         self.class_label_array = np.array([classes[0]] * ge_count + [classes[1]] * ccre_count)
-        self.global_ccres_over_genes_ratio = (ccre_count / ge_count)
+
 
     def reset(self):
         self.iteration = 0
@@ -681,6 +683,51 @@ class AdaGAE():
         distances = torch.max(distances, torch.t(distances))
         sorted_distances, _ = distances.sort(dim=1)
 
+        current_gene_sparsity = math.floor(self.current_sparsity / self.global_ccres_over_genes_ratio)
+        assert current_gene_sparsity != 0
+
+        # distance to the k-th nearest neighbor ONLY GENES:
+        top_k_genes = sorted_distances[:ge_count, current_gene_sparsity]
+        top_k_genes = torch.t(top_k_genes.repeat(size, 1)) + 10 ** -10
+
+        # summatory of the nearest k distances ONLY GENES:
+        sum_top_k_genes = torch.sum(sorted_distances[:ge_count, 0:current_gene_sparsity], dim=1)
+        sum_top_k_genes = torch.t(sum_top_k_genes.repeat(size, 1))
+
+        # numerator of equation 20 in the paper ONLY GENES
+        T_genes = top_k_genes - distances[:ge_count,]
+
+        # equation 20 in the paper. notice that self.current_sparsity = k. ONLY GENES
+        weights_genes = torch.div(T_genes, current_gene_sparsity * top_k_genes - sum_top_k_genes)
+
+
+        # distance to the k-th nearest neighbor ONLY CCRES:
+        top_k_ccres = sorted_distances[ge_count:, self.current_sparsity]
+        top_k_ccres = torch.t(top_k_ccres.repeat(size, 1)) + 10 ** -10
+
+        # summatory of the nearest k distances ONLY CCRES:
+        sum_top_k_ccres = torch.sum(sorted_distances[ge_count:, 0:self.current_sparsity], dim=1)
+        sum_top_k_ccres = torch.t(sum_top_k_ccres.repeat(size, 1))
+
+        # numerator of equation 20 in the paper ONLY CCRES
+        T_ccres = top_k_ccres - distances[ge_count:, ]
+
+        # equation 20 in the paper. notice that self.current_sparsity = k. ONLY CCRES
+        weights_ccres = torch.div(T_ccres, self.current_sparsity * top_k_ccres - sum_top_k_ccres)
+
+        weights_diff = torch.cat((weights_genes,weights_ccres))
+
+        sorted_distances = None
+        T_genes = None
+        T_ccres = None
+        top_k_genes = None
+        top_k_ccres = None
+        sum_top_k_genes = None
+        sum_top_k_ccres = None
+        torch.cuda.empty_cache()
+
+        weights = weights_diff.relu().to(self.device)
+        '''
         # distance to the k-th nearest neighbor:
         top_k = sorted_distances[:, self.current_sparsity]
         top_k = torch.t(top_k.repeat(size, 1)) + 10 ** -10
@@ -696,7 +743,7 @@ class AdaGAE():
         distances = None
         torch.cuda.empty_cache()
 
-        # equation 20 in the paper. notice that num_neighbors = k.
+        # equation 20 in the paper. notice that self.current_sparsity = k.
         weights = torch.div(T, self.current_sparsity * top_k - sum_top_k)
         # Self-loop can generate too much oversmoothing according to Hamilton.
         # but if we take out self-loops then we should change from GCN to other
@@ -709,7 +756,7 @@ class AdaGAE():
         torch.cuda.empty_cache()
         # notice that the following line is also part of equation 20
         weights = weights.relu().to(self.device)
-
+        '''
         # now at this point, after computing the generative model of the
         # k sparse graph being based on node divergences and similarities,
         # we add weight to some points of the connectivity distribution being based
@@ -856,13 +903,13 @@ def save(epoch):
 eval = False
 pre_trained = False
 init_genomic_C = 1e5
-genes_to_pick = 50
+genes_to_pick = 100
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 max_iter = 30
 max_epoch = 100
 sparsity_increment = 1
 learning_rate = 5 * 10 ** -3
-init_sparsity = 2
+init_sparsity = 30
 init_genomic_slope = 0.2
 init_cluster_num = 12
 init_lambda = 3.0
