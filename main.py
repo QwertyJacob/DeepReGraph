@@ -327,10 +327,11 @@ class AdaGAE_NN(torch.nn.Module):
             self.embedding = torch.load(datapath + pre_computed_embedding, map_location=torch.device(self.device))
         self.optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
 
-    def forward(self, norm_adj_matrix):
-        embedding = norm_adj_matrix.mm(self.data_matrix.matmul(self.W1))
+    def forward(self, no_loop_adj_matrix):
+        embedding = no_loop_adj_matrix.mm(self.data_matrix.matmul(self.W1))
         embedding = torch.relu(embedding)
-        self.embedding = norm_adj_matrix.mm(embedding.matmul(self.W2))
+        self_mat = torch.eye(no_loop_adj_matrix.shape[0],no_loop_adj_matrix.shape[1]).to(self.device)
+        self.embedding = self_mat.mm(embedding.matmul(self.W2))
         distances = distance(self.embedding.t(), self.embedding.t())
         softmax = torch.nn.Softmax(dim=1)
         recons_w = softmax(-distances)
@@ -394,6 +395,7 @@ class AdaGAE():
             self.adj, self.raw_adj = self.cal_weights_via_CAN(self.X.t())
 
         self.norm_adj = get_normalized_adjacency_matrix(self.adj)
+        self.no_loop_adj = self.norm_adj.clone().fill_diagonal_(0).to_sparse()
         self.norm_adj = self.norm_adj.to_sparse()
 
         self.adj = self.adj.cpu()
@@ -406,7 +408,7 @@ class AdaGAE():
         with torch.no_grad():
             # initilalizes self.gae_nn.embedding:
             self.gae_nn.to(self.device)
-            _ = self.gae_nn(self.norm_adj.to(device))
+            _ = self.gae_nn(self.no_loop_adj.to(device))
             _ = None
             torch.cuda.empty_cache()
 
@@ -422,6 +424,7 @@ class AdaGAE():
         # connections = (recons > threshold).type(torch.IntTensor).cuda()
         # weights = weights * connections
         self.norm_adj = get_normalized_adjacency_matrix(self.adj)
+        self.no_loop_adj = self.norm_adj.clone().fill_diagonal_(0)
         return self.adj, self.norm_adj, self.raw_adj
 
 
@@ -578,7 +581,7 @@ class AdaGAE():
         self.gae_nn.optimizer.zero_grad()
 
         # recons is the q distribution.
-        recons = self.gae_nn(self.norm_adj)
+        recons = self.gae_nn(self.no_loop_adj)
         loss = self.build_loss(recons)
 
         torch.cuda.empty_cache()
@@ -642,9 +645,9 @@ class AdaGAE():
             if (not bounded_sparsity) or (self.current_sparsity < self.max_sparsity):
                 self.current_sparsity += sparsity_increment
                 update = True
-            if self.current_genetic_balance_factor > min_gbf:
-                self.current_genetic_balance_factor -= (init_gbf-min_gbf)/max_epoch
-                update = True
+
+            self.current_genetic_balance_factor = self.get_gbf(self.global_step)
+            update = True
 
             if update: self.update_graph()
 
@@ -654,6 +657,11 @@ class AdaGAE():
 
             mean_loss = sum(self.epoch_losses) / len(self.epoch_losses)
             print('epoch:%3d,' % epoch, 'loss: %6.5f' % mean_loss)
+
+    def get_gbf(self, steps_done):
+
+        return 1 + ((init_gbf-1) / (((2*steps_done)/(max_epoch*max_iter))**5+1))
+
 
     def cal_weights_via_CAN(self, transposed_data_matrix):
         """
@@ -672,6 +680,7 @@ class AdaGAE():
 
         distances = torch.max(distances, torch.t(distances))
         sorted_distances, _ = distances.sort(dim=1)
+
         # distance to the k-th nearest neighbor:
         top_k = sorted_distances[:, self.current_sparsity]
         top_k = torch.t(top_k.repeat(size, 1)) + 10 ** -10
@@ -718,7 +727,7 @@ class AdaGAE():
         scaled_link_scores = scaled_link_scores.t() * self.current_genetic_balance_factor
 
         if not eval:
-            tensorboard.add_scalar(GENETIC_BALANCE_FACTOR_LABEL, self.current_genetic_balance_factor,self.global_step)
+            tensorboard.add_scalar(GENETIC_BALANCE_FACTOR_LABEL, float(self.current_genetic_balance_factor),self.global_step)
 
 
         weights += scaled_link_scores
@@ -850,10 +859,10 @@ init_genomic_C = 1e5
 genes_to_pick = 50
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 max_iter = 30
-max_epoch = 20
-sparsity_increment = 10
+max_epoch = 100
+sparsity_increment = 1
 learning_rate = 5 * 10 ** -3
-init_sparsity = 50
+init_sparsity = 2
 init_genomic_slope = 0.2
 init_cluster_num = 12
 init_lambda = 3.0
@@ -879,7 +888,7 @@ input_dim = X.shape[1]
 layers = [input_dim, 24, 12]
 
 if __name__ == '__main__':
-    modelname = '/some_model'
+    modelname = '/some_new_model'
 
     tensorboard = SummaryWriter(LOG_DIR + modelname)
 
