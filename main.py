@@ -169,7 +169,7 @@ def distance(X, Y, square=True):
 
 
 def get_normalized_adjacency_matrix(weights):
-    # We don't create self loops with 1 (nor with any calue)
+    # We don't create self loops with 1 (nor with any value)
     # because we want the embeddings to adaptively learn
     # the self-loop weights.
     # W = torch.eye(weights.shape[0]).cuda() + weights
@@ -233,8 +233,12 @@ def get_primitive_clusters(link_ds, ccre_ds):
     return np.array(prim_gene_ds.primitive_cluster.to_list() + prim_ccre_ds.primitive_cluster.to_list())
 
 
-def load_data(datapath, num_of_genes=0):
-    var_log_ge_ds = pd.read_csv(datapath + 'var_log_fpkm_GE_ds')
+def load_data(datapath, num_of_genes=0, tight=True):
+
+    if tight:
+        var_log_ge_ds = pd.read_csv(datapath + 'tight_var_log_fpkm_GE_ds')
+    else:
+        var_log_ge_ds = pd.read_csv(datapath + 'var_log_fpkm_GE_ds')
 
     X = var_log_ge_ds[['Heart_E10_5', 'Heart_E11_5', 'Heart_E12_5',
                        'Heart_E13_5', 'Heart_E14_5', 'Heart_E15_5', 'Heart_E16_5', 'Heart_P0']].values
@@ -273,6 +277,7 @@ def load_data(datapath, num_of_genes=0):
     ccre_ds = ccre_ds[ccre_ds['cCRE_ID'].isin(ccres)]
 
     return link_ds, ccre_ds
+
 
 
 #####
@@ -638,7 +643,7 @@ class AdaGAE():
                 self.current_sparsity += sparsity_increment
                 update = True
             if self.current_genetic_balance_factor > min_gbf:
-                self.current_genetic_balance_factor -= 3
+                self.current_genetic_balance_factor -= (init_gbf-min_gbf)/max_epoch
                 update = True
 
             if update: self.update_graph()
@@ -684,6 +689,11 @@ class AdaGAE():
 
         # equation 20 in the paper. notice that num_neighbors = k.
         weights = torch.div(T, self.current_sparsity * top_k - sum_top_k)
+        # Self-loop can generate too much oversmoothing according to Hamilton.
+        # but if we take out self-loops then we should change from GCN to other
+        # GNN with the explicit {UPDATE} function like concatenation ??
+        # TODO see what happens if we introduce the following line of code:
+        # weights.fill_diagonal_(0)
         T = None
         top_k = None
         sum_top_k = None
@@ -841,14 +851,14 @@ genes_to_pick = 50
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 max_iter = 30
 max_epoch = 20
-sparsity_increment = 5
+sparsity_increment = 10
 learning_rate = 5 * 10 ** -3
-init_sparsity = 1
+init_sparsity = 50
 init_genomic_slope = 0.2
 init_cluster_num = 12
 init_lambda = 3.0
 add_self_loops = False
-init_gbf = 40
+init_gbf = 7
 min_gbf = 1
 bounded_sparsity = False
 regularized_distance = False
