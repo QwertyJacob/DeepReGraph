@@ -321,18 +321,24 @@ class AdaGAE_NN(torch.nn.Module):
         self.mid_dim = layers[1]
         self.input_dim = layers[0]
         self.data_matrix = data_matrix.to(device)
-        self.W1 = get_weight_initial([self.input_dim, self.mid_dim])
-        self.W2 = get_weight_initial([self.mid_dim, self.embedding_dim])
+        self.W1_neigh = get_weight_initial([self.input_dim, self.mid_dim])
+        self.W1_self = get_weight_initial([self.input_dim, self.mid_dim])
+        self.W2_neigh = get_weight_initial([self.mid_dim, self.embedding_dim])
+        self.W2_self = get_weight_initial([self.mid_dim, self.embedding_dim])
         if pre_trained:
             self.load_state_dict(torch.load(datapath + pre_trained_state_dict, map_location=torch.device(self.device)))
             self.embedding = torch.load(datapath + pre_computed_embedding, map_location=torch.device(self.device))
         self.optimizer = torch.optim.Adam(self.parameters(), lr=learning_rate)
 
-    def forward(self, no_loop_adj_matrix):
-        embedding = no_loop_adj_matrix.mm(self.data_matrix.matmul(self.W1))
-        embedding = torch.relu(embedding)
-        self_mat = torch.eye(no_loop_adj_matrix.shape[0],no_loop_adj_matrix.shape[1]).to(self.device)
-        self.embedding = self_mat.mm(embedding.matmul(self.W2))
+    def forward(self, norm_adj_matrix):
+        embedding_1 = norm_adj_matrix.mm(self.data_matrix.matmul(self.W1_neigh))
+        embedding_1 += self.data_matrix.matmul(self.W1_self)
+        embedding_1 = torch.relu(embedding_1)
+
+        embedding = (norm_adj_matrix.matmul(embedding_1)).matmul(self.W2_neigh)
+        embedding += embedding_1.matmul(self.W2_self)
+        self.embedding = torch.relu(embedding)
+
         distances = distance(self.embedding.t(), self.embedding.t())
         softmax = torch.nn.Softmax(dim=1)
         recons_w = softmax(-distances)
@@ -397,7 +403,6 @@ class AdaGAE():
             self.adj, self.raw_adj = self.cal_weights_via_CAN(self.X.t())
 
         self.norm_adj = get_normalized_adjacency_matrix(self.adj)
-        self.no_loop_adj = self.norm_adj.clone().fill_diagonal_(0).to_sparse()
         self.norm_adj = self.norm_adj.to_sparse()
 
         self.adj = self.adj.cpu()
@@ -410,7 +415,7 @@ class AdaGAE():
         with torch.no_grad():
             # initilalizes self.gae_nn.embedding:
             self.gae_nn.to(self.device)
-            _ = self.gae_nn(self.no_loop_adj.to(device))
+            _ = self.gae_nn(self.norm_adj.to(device))
             _ = None
             torch.cuda.empty_cache()
 
@@ -426,7 +431,6 @@ class AdaGAE():
         # connections = (recons > threshold).type(torch.IntTensor).cuda()
         # weights = weights * connections
         self.norm_adj = get_normalized_adjacency_matrix(self.adj)
-        self.no_loop_adj = self.norm_adj.clone().fill_diagonal_(0)
         return self.adj, self.norm_adj, self.raw_adj
 
 
@@ -577,13 +581,15 @@ class AdaGAE():
         self.current_genomic_slope = action[2]
         tensorboard.add_scalar(SLOPE_LABEL, self.current_genomic_slope, self.global_step)
         self.current_genetic_balance_factor = action[3]
+        tensorboard.add_scalar(GENETIC_BALANCE_FACTOR_LABEL, float(self.current_genetic_balance_factor),self.global_step)
+
         self.current_genomic_C = action[4]
         tensorboard.add_scalar(GENOMIC_C_LABEL, self.current_genomic_C, self.global_step)
 
         self.gae_nn.optimizer.zero_grad()
 
         # recons is the q distribution.
-        recons = self.gae_nn(self.no_loop_adj)
+        recons = self.gae_nn(self.norm_adj)
         loss = self.build_loss(recons)
 
         torch.cuda.empty_cache()
@@ -648,7 +654,7 @@ class AdaGAE():
                 self.current_sparsity += sparsity_increment
                 update = True
 
-            self.current_genetic_balance_factor = self.get_gbf(self.global_step)
+            self.current_genetic_balance_factor = self.get_gbf()
             update = True
 
             if update: self.update_graph()
@@ -660,9 +666,9 @@ class AdaGAE():
             mean_loss = sum(self.epoch_losses) / len(self.epoch_losses)
             print('epoch:%3d,' % epoch, 'loss: %6.5f' % mean_loss)
 
-    def get_gbf(self, steps_done):
+    def get_gbf(self):
 
-        return 1 + ((init_gbf-1) / (((2*steps_done)/(max_epoch*max_iter))**5+1))
+        return 1 + ((init_gbf-1) / (((2*self.global_step)/(max_epoch*max_iter))**5+1))
 
 
     def cal_weights_via_CAN(self, transposed_data_matrix):
@@ -773,11 +779,11 @@ class AdaGAE():
         scaled_link_scores = (link_scores_tensor.t() * element_max_similarity_scores / element_max_distance_scores)
         scaled_link_scores = scaled_link_scores.t() * self.current_genetic_balance_factor
 
-        if not eval:
-            tensorboard.add_scalar(GENETIC_BALANCE_FACTOR_LABEL, float(self.current_genetic_balance_factor),self.global_step)
-
-
         weights += scaled_link_scores
+
+        # self-loop avoidance (changed to basic GNN model as in hamilton's book)
+        weights.fill_diagonal_(0)
+
         # row-wise normalization.
         weights /= weights.sum(dim=1).reshape([size, 1])
 
@@ -935,7 +941,7 @@ input_dim = X.shape[1]
 layers = [input_dim, 24, 12]
 
 if __name__ == '__main__':
-    modelname = '/some_new_model'
+    modelname = '/basic_gnn'
 
     tensorboard = SummaryWriter(LOG_DIR + modelname)
 
