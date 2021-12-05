@@ -400,7 +400,8 @@ class AdaGAE():
                                 self.pre_computed_embedding,
                                 gcn).to(self.device)
         self.current_sparsity = init_sparsity + 1
-        self.current_gene_sparsity = math.floor(self.current_sparsity / self.global_ccres_over_genes_ratio)
+        self.current_gene_sparsity = math.ceil(self.current_sparsity / self.global_ccres_over_genes_ratio)
+        if self.current_gene_sparsity == 0: self.current_gene_sparsity += 1
         self.current_genomic_slope = init_genomic_slope
         self.current_genomic_C = init_genomic_C
         self.current_genetic_balance_factor = init_gbf
@@ -593,9 +594,9 @@ class AdaGAE():
         self.iteration += 1
         action = action.detach().to('cpu').numpy()
         self.current_lambda = action[0]
-        tensorboard.add_scalar(LAMBDA_LABEL, self.current_lambda, self.global_step)
+        tensorboard.add_scalar(LAMBDA_LABEL, float(self.current_lambda), self.global_step)
         self.current_sparsity = int(action[1])
-        self.current_gene_sparsity = math.floor(self.current_sparsity / self.global_ccres_over_genes_ratio)
+        self.current_gene_sparsity = math.ceil(self.current_sparsity / self.global_ccres_over_genes_ratio)
         tensorboard.add_scalar(SPARSITY_LABEL, self.current_sparsity, self.global_step)
         tensorboard.add_scalar(GENE_SPARSITY_LABEL, self.current_gene_sparsity, self.global_step)
         self.current_genomic_slope = action[2]
@@ -622,7 +623,7 @@ class AdaGAE():
 
         if self.iteration % 10 == 0:
             visual_clustering = False
-            if self.iteration % (10 * max_iter) == 0:
+            if self.iteration % (40 * max_iter) == 0:
                 visual_clustering = True
             gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = self.clustering(
                 visual_clustering)
@@ -668,16 +669,17 @@ class AdaGAE():
                 reward, loss, done_flag = self.step(dummy_action)
                 self.epoch_losses.append(loss.item())
 
-            update = False
+
 
             if (not bounded_sparsity) or (self.current_sparsity < self.max_sparsity):
                 self.current_sparsity += sparsity_increment
-                update = True
+
 
             self.current_genetic_balance_factor = self.get_gbf()
-            update = True
+            self.current_lambda = self.get_lambda()
 
-            if update: self.update_graph()
+
+            self.update_graph()
 
             if bounded_sparsity and (self.current_sparsity >= self.max_sparsity):
                 self.current_sparsity = int(self.max_sparsity)
@@ -688,8 +690,11 @@ class AdaGAE():
 
     def get_gbf(self):
 
-        return 1 + ((init_gbf-1) / (((2*self.global_step)/(max_epoch*max_iter))**5+1))
+        return min_gbf + ((init_gbf-1) / (((2*self.global_step)/(max_epoch*max_iter))**5+1))
 
+    def get_lambda(self):
+
+        return init_lambda + ((max_lambda-init_lambda) * (1/(1+math.e**(-(self.global_step-((max_epoch*max_iter)/2))/4))))
 
     def cal_weights_via_CAN(self, transposed_data_matrix):
         """
@@ -708,8 +713,6 @@ class AdaGAE():
 
         distances = torch.max(distances, torch.t(distances))
         sorted_distances, _ = distances.sort(dim=1)
-
-        assert self.current_gene_sparsity != 0
 
         # distance to the k-th nearest neighbor ONLY GENES:
         top_k_genes = sorted_distances[:ge_count, self.current_gene_sparsity]
@@ -934,7 +937,8 @@ learning_rate = 5 * 10 ** -3
 init_sparsity = 30
 init_genomic_slope = 0.2
 init_cluster_num = 12
-init_lambda = 3.0
+init_lambda = 1
+max_lambda = 5
 add_self_loops_genomic = False
 add_self_loops_euclidean = False
 gcn = False
