@@ -693,8 +693,13 @@ class AdaGAE():
         return min_gbf + ((init_gbf-1) / (((2*self.global_step)/(max_epoch*max_iter))**5+1))
 
     def get_lambda(self):
-
-        return init_lambda + ((max_lambda-init_lambda) * (1/(1+math.e**(-(self.global_step-((max_epoch*max_iter)/2))/4))))
+        if final_lambda - init_lambda >= 0:
+            #lambda goes from low to high, then the exponent will be negative
+            exponent = -1
+        else:
+            # lambda goes from high to low, then the exponent should be positive:
+            exponent = 1
+        return init_lambda + ((final_lambda - init_lambda) * (1 / (1 + math.e ** ((exponent) * (self.global_step - ((max_epoch * max_iter) / 2)) / (4*(max_epoch))))))
 
     def cal_weights_via_CAN(self, transposed_data_matrix):
         """
@@ -938,7 +943,7 @@ init_sparsity = 30
 init_genomic_slope = 0.2
 init_cluster_num = 12
 init_lambda = 1
-max_lambda = 5
+final_lambda = 5
 add_self_loops_genomic = False
 add_self_loops_euclidean = False
 gcn = False
