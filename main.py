@@ -460,10 +460,19 @@ class AdaGAE():
 
         size = self.X.shape[0]
         loss = 0
+        '''
         # notice that recons is actually the q distribution.
         # and that raw_weigths is the p distribution. (before the symmetrization)
         # the following line is the definition of kl divergence
         loss += self.raw_adj * torch.log(self.raw_adj / recons + 10 ** -10)
+        '''
+
+        #Actually the KL divergence is computed by the sole second decomposed term -P(X)log(Q(Z))
+        loss -= (self.raw_adj * torch.log(recons))
+        # But if we want to take into account for global distances, we need the Cross Entropy rather than the KL divergence.
+        # If you dont believe it, make a limit study following the one in https://towardsdatascience.com/how-exactly-umap-works-13e3040e1668
+        loss -= (1 - self.raw_adj) * torch.log(1-recons)
+
         loss = loss.sum(dim=1)
         # In the paper they mention the minimization of the row-wise kl divergence.
         # here we know we have to compute the mean kl divergence for each point.
