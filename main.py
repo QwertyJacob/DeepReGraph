@@ -288,7 +288,8 @@ def load_data(datapath, num_of_genes=0, tight=True):
 SPARSITY_LABEL: str = 'Sparsity'
 GENE_SPARSITY_LABEL: str = 'Gene_Sparsity'
 SLOPE_LABEL: str = 'GeneticSlope'
-KL_DIVERGENCE_LABEL: str = 'KL_divergence'
+LOCAL_DIST_LOSS: str = 'LocalDistLoss'
+GLOBAL_DIST_LOSS: str = 'GlobalDistLoss'
 LOCALDISTPRESERVING_LABEL: str = 'LocalDistPreservingPenalty'
 TOTAL_LOSS_LABEL: str = 'Total_Loss'
 LAMBDA_LABEL: str = 'Lambda'
@@ -468,16 +469,20 @@ class AdaGAE():
         '''
 
         #Actually the KL divergence is computed by the sole second decomposed term -P(X)log(Q(Z))
-        loss -= (self.raw_adj * torch.log(recons))
-        # But if we want to take into account for global distances, we need the Cross Entropy rather than the KL divergence.
-        # If you dont believe it, make a limit study following the one in https://towardsdatascience.com/how-exactly-umap-works-13e3040e1668
-        loss -= (1 - self.raw_adj) * torch.log(1-recons)
-
-        loss = loss.sum(dim=1)
+        local_dist_loss = -(self.raw_adj * torch.log(recons))
         # In the paper they mention the minimization of the row-wise kl divergence.
         # here we know we have to compute the mean kl divergence for each point.
-        loss = loss.mean()
-        tensorboard.add_scalar(KL_DIVERGENCE_LABEL, loss.item(), self.global_step)
+        local_dist_loss = local_dist_loss.sum(dim=1)
+        local_dist_loss = local_dist_loss.mean()
+        tensorboard.add_scalar(LOCAL_DIST_LOSS, local_dist_loss.item(), self.global_step)
+        # But if we want to take into account for global distances, we need the Cross Entropy rather than the KL divergence.
+        # If you dont believe it, make a limit study following the one in https://towardsdatascience.com/how-exactly-umap-works-13e3040e1668
+        global_dist_loss = -(1 - self.raw_adj) * torch.log(1-recons)
+        global_dist_loss = global_dist_loss.sum(dim=1)
+        global_dist_loss = global_dist_loss.mean()
+        tensorboard.add_scalar(GLOBAL_DIST_LOSS, global_dist_loss.item(), self.global_step)
+
+        loss += local_dist_loss + global_dist_loss
 
         degree = self.adj.sum(dim=1)
         laplacian = torch.diag(degree) - self.adj
