@@ -484,15 +484,17 @@ class AdaGAE():
 
         loss += local_dist_loss + global_dist_loss
 
-        degree = self.adj.sum(dim=1)
-        laplacian = torch.diag(degree) - self.adj
-        # This is exactly equation 11 in the paper.
-        # Notice that torch.trace return the sum of the elements in the diagonal of the input matrix.
-        local_distance_preserving_loss = torch.trace(
-            self.gae_nn.embedding.t().matmul(laplacian).matmul(self.gae_nn.embedding)) / size
-        tensorboard.add_scalar(LOCALDISTPRESERVING_LABEL, local_distance_preserving_loss.item(), self.global_step)
+        if rq_minimization_objective:
 
-        loss += self.current_lambda * local_distance_preserving_loss
+            degree = self.adj.sum(dim=1)
+            laplacian = torch.diag(degree) - self.adj
+            # This is exactly equation 11 in the paper.
+            # Notice that torch.trace return the sum of the elements in the diagonal of the input matrix.
+            local_distance_preserving_loss = torch.trace(
+                self.gae_nn.embedding.t().matmul(laplacian).matmul(self.gae_nn.embedding)) / size
+            tensorboard.add_scalar(LOCALDISTPRESERVING_LABEL, local_distance_preserving_loss.item(), self.global_step)
+            loss += self.current_lambda * local_distance_preserving_loss
+
         tensorboard.add_scalar(TOTAL_LOSS_LABEL, loss.item(), self.global_step)
 
         self.adj.to('cpu')
@@ -958,8 +960,7 @@ gcn = False
 init_gbf = 7
 min_gbf = 1
 bounded_sparsity = False
-regularized_distance = False
-CCRE_dist_reg_factor = 10.5
+rq_minimization_objective = False
 
 link_ds, ccre_ds = load_data(datapath, genes_to_pick)
 
