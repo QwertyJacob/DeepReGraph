@@ -722,13 +722,7 @@ class AdaGAE():
         """
         size = transposed_data_matrix.shape[1]
 
-        # We have notice a difference between the distributions of same-class distances.
-        # (see the report C:\Users\Jesus Cevallos\odrive\DIAG Drive\RL_developmental_studies\Next Steps.docx)
-        if regularized_distance:
-            distances = distance(transposed_data_matrix, transposed_data_matrix)
-            distances[ge_count:, ge_count:] = distances[ge_count:, ge_count:] / CCRE_dist_reg_factor
-        else:
-            distances = distance(transposed_data_matrix, transposed_data_matrix)
+        distances = distance(transposed_data_matrix, transposed_data_matrix)
 
         distances = torch.max(distances, torch.t(distances))
         sorted_distances, _ = distances.sort(dim=1)
