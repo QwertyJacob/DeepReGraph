@@ -234,7 +234,7 @@ def get_primitive_clusters(link_ds, ccre_ds):
     return np.array(prim_gene_ds.primitive_cluster.to_list() + prim_ccre_ds.primitive_cluster.to_list())
 
 
-def load_data(datapath, num_of_genes=0, tight=True):
+def load_data(datapath, num_of_genes=0, tight=True, chr_to_filter=None):
 
     if tight:
         var_log_ge_ds = pd.read_csv(datapath + 'tight_var_log_fpkm_GE_ds')
@@ -256,7 +256,12 @@ def load_data(datapath, num_of_genes=0, tight=True):
                       'Heart_E13_5', 'Heart_E14_5', 'Heart_E15_5', 'Heart_E16_5', 'Heart_P0']] = X
 
     ccre_ds = pd.read_csv(datapath + 'cCRE_variational_mean_reduced.csv')
+    if chr_to_filter != None:
+        filtered_ccre_ds = pd.DataFrame()
+        for chr_number in chr_to_filter:
+            filtered_ccre_ds = pd.concat([filtered_ccre_ds, ccre_ds[ccre_ds['cCRE_ID'].str.startswith('chr'+str(chr_number))]])
 
+    ccre_ds = filtered_ccre_ds
     ####################LINK MATRIX #####################################################
     link_ds = pd.read_csv(datapath + '/Link_Matrix.tsv', sep='\t')
     link_ds.columns = ['EnsembleID', 'cCRE_ID', 'Distance']
@@ -494,11 +499,6 @@ class AdaGAE():
         global_dist_loss = global_dist_loss.mean()
         tensorboard.add_scalar(GLOBAL_DIST_LOSS, global_dist_loss.item(), self.global_step)
 
-        if local_ce_loss:
-            loss += self.current_local_ce_loss_weight * local_dist_loss
-
-        if global_ce_loss:
-            loss += self.current_global_ce_loss_weight * global_dist_loss
 
         degree = self.adj.sum(dim=1)
         laplacian = torch.diag(degree) - self.adj
@@ -508,8 +508,9 @@ class AdaGAE():
             self.gae_nn.embedding.t().matmul(laplacian).matmul(self.gae_nn.embedding)) / size
         tensorboard.add_scalar(LOCALDISTPRESERVING_LABEL, local_distance_preserving_loss.item(), self.global_step)
 
-        if rq_minimization_objective:
-            loss += self.current_lambda * local_distance_preserving_loss
+        loss += self.current_local_ce_loss_weight * local_dist_loss
+        loss += self.current_global_ce_loss_weight * global_dist_loss
+        loss += self.current_lambda * local_distance_preserving_loss
 
         tensorboard.add_scalar(TOTAL_LOSS_LABEL, loss.item(), self.global_step)
 
@@ -547,7 +548,10 @@ class AdaGAE():
                 distance_score = current_distance_score_matrix.mean() * (cluster_dim**0.3)
             distance_scores.append(distance_score)
 
-        return sum(distance_scores) / len(distance_scores)
+        if len(distance_scores)==0:
+            return 0
+        else:
+            return sum(distance_scores) / len(distance_scores)
 
     def get_mean_heterogeneity(self, predicted_labels):
         cluster_heterogeneities = []
@@ -564,9 +568,11 @@ class AdaGAE():
             current_heterogeneity = 1 / (1 + heterogeneity_drift)
             cluster_heterogeneities.append(current_heterogeneity)
 
-        mean_heterogeneity = sum(cluster_heterogeneities) / len(cluster_heterogeneities)
-
-        return mean_heterogeneity
+        if len(cluster_heterogeneities)== 0:
+            return 0
+        else:
+            mean_heterogeneity = sum(cluster_heterogeneities) / len(cluster_heterogeneities)
+            return mean_heterogeneity
 
     def get_mean_cluster_conciseness(self, data_points, labels):
 
@@ -587,7 +593,10 @@ class AdaGAE():
                 mean_scaled_gene_dispersion_k = scaled_gene_dispersions_k.mean()
             cluster_concisenesses.append(1 / (1 + mean_scaled_gene_dispersion_k))
 
-        return sum(cluster_concisenesses) / len(cluster_concisenesses)
+        if len(cluster_concisenesses)==0:
+            return 0
+        else:
+            return sum(cluster_concisenesses) / len(cluster_concisenesses)
 
     def get_raw_score(self, predicted_labels):
 
@@ -958,7 +967,7 @@ def save(epoch):
 eval = False
 pre_trained = False
 init_genomic_C = 1e5
-genes_to_pick = 100
+genes_to_pick = 0
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 max_iter = 30
 max_epoch = 100
@@ -967,22 +976,20 @@ learning_rate = 5 * 10 ** -3
 init_sparsity = 30
 init_genomic_slope = 0.2
 init_cluster_num = 12
-init_lambda = 1
-final_lambda = 5
 add_self_loops_genomic = False
 add_self_loops_euclidean = False
 gcn = False
 init_gbf = 7
 min_gbf = 1
-rq_minimization_objective = True
-local_ce_loss = False
 init_local_ce_loss_weight = 1
 final_local_ce_loss_weight = 1
-global_ce_loss = True
 init_global_ce_loss_weight = 1
 final_global_ce_loss_weight = 1
+init_lambda = 1
+final_lambda = 5
 
-link_ds, ccre_ds = load_data(datapath, genes_to_pick)
+
+link_ds, ccre_ds = load_data(datapath, genes_to_pick, chr_to_filter=[16,19])
 
 X, ge_count, ccre_count = get_hybrid_feature_matrix(link_ds, ccre_ds)
 
