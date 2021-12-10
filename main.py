@@ -289,6 +289,8 @@ SPARSITY_LABEL: str = 'Sparsity'
 GENE_SPARSITY_LABEL: str = 'Gene_Sparsity'
 SLOPE_LABEL: str = 'GeneticSlope'
 LOCAL_DIST_LOSS: str = 'LocalDistLoss'
+FIRST_KL_TERM:str = 'First_KL_Term'
+KL:str= 'KL'
 GLOBAL_DIST_LOSS: str = 'GlobalDistLoss'
 LOCALDISTPRESERVING_LABEL: str = 'LocalDistPreservingPenalty'
 TOTAL_LOSS_LABEL: str = 'Total_Loss'
@@ -298,6 +300,8 @@ GENOMIC_C_LABEL: str = 'GenomicC'
 GE_CC_SCORE_TAG: str = 'GeneCCScore'
 CCRE_CC_SCORE_TAG: str = 'CCRECCScore'
 HETEROGENEITY_SCORE_TAG: str = 'HeterogeneityScore'
+EMBEDDING_DIAMETER: str = 'EmbeddingDiameter'
+DISTANCE_TO_KNN_TAG: str = 'distance_to_knn'
 REWARD_TAG: str = 'Reward'
 UMAP_CLASS_PLOT_TAG: str = 'UMAPClassPlot'
 UMAP_CLUSTER_PLOT_TAG: str = 'UMAPClusterPlot'
@@ -374,11 +378,6 @@ class AdaGAE():
         self.device = device
         if self.device is None: self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.X = X
-        if bounded_sparsity:
-            self.max_sparsity = self.cal_max_neighbors()
-        else:
-            self.max_sparsity = None
-        print('Neighbors will increment up to ', self.max_sparsity)
         self.pre_trained = pre_trained
         self.pre_trained_state_dict = pre_trained_state_dict
         self.pre_computed_embedding = pre_computed_embedding
@@ -465,11 +464,20 @@ class AdaGAE():
         # notice that recons is actually the q distribution.
         # and that raw_weigths is the p distribution. (before the symmetrization)
         # the following line is the definition of kl divergence
-        loss += self.raw_adj * torch.log(self.raw_adj / recons + 10 ** -10)
         '''
+        kl_loss = self.raw_adj * torch.log(self.raw_adj / recons + 10 ** -10)
+        kl_loss = kl_loss.sum(dim=1)
+        kl_loss = kl_loss.mean()
+        tensorboard.add_scalar(KL, kl_loss.item(), self.global_step)
+
+
+        useless_kl_loss = self.raw_adj * torch.log(self.raw_adj + 10 ** -10)
+        useless_kl_loss = useless_kl_loss.sum(dim=1)
+        useless_kl_loss = useless_kl_loss.mean()
+        tensorboard.add_scalar(FIRST_KL_TERM, useless_kl_loss.item(), self.global_step)
 
         #Actually the KL divergence is computed by the sole second decomposed term -P(X)log(Q(Z))
-        local_dist_loss = -(self.raw_adj * torch.log(recons))
+        local_dist_loss = -(self.raw_adj * torch.log(recons + 10 ** -10))
         # In the paper they mention the minimization of the row-wise kl divergence.
         # here we know we have to compute the mean kl divergence for each point.
         local_dist_loss = local_dist_loss.sum(dim=1)
@@ -484,15 +492,15 @@ class AdaGAE():
 
         loss += local_dist_loss + global_dist_loss
 
-        if rq_minimization_objective:
+        degree = self.adj.sum(dim=1)
+        laplacian = torch.diag(degree) - self.adj
+        # This is exactly equation 11 in the paper.
+        # Notice that torch.trace return the sum of the elements in the diagonal of the input matrix.
+        local_distance_preserving_loss = torch.trace(
+            self.gae_nn.embedding.t().matmul(laplacian).matmul(self.gae_nn.embedding)) / size
+        tensorboard.add_scalar(LOCALDISTPRESERVING_LABEL, local_distance_preserving_loss.item(), self.global_step)
 
-            degree = self.adj.sum(dim=1)
-            laplacian = torch.diag(degree) - self.adj
-            # This is exactly equation 11 in the paper.
-            # Notice that torch.trace return the sum of the elements in the diagonal of the input matrix.
-            local_distance_preserving_loss = torch.trace(
-                self.gae_nn.embedding.t().matmul(laplacian).matmul(self.gae_nn.embedding)) / size
-            tensorboard.add_scalar(LOCALDISTPRESERVING_LABEL, local_distance_preserving_loss.item(), self.global_step)
+        if rq_minimization_objective:
             loss += self.current_lambda * local_distance_preserving_loss
 
         tensorboard.add_scalar(TOTAL_LOSS_LABEL, loss.item(), self.global_step)
@@ -685,21 +693,14 @@ class AdaGAE():
                 reward, loss, done_flag = self.step(dummy_action)
                 self.epoch_losses.append(loss.item())
 
-
-
-            if (not bounded_sparsity) or (self.current_sparsity < self.max_sparsity):
-                self.current_sparsity += sparsity_increment
-
-
+            self.current_sparsity += sparsity_increment
             self.current_genetic_balance_factor = self.get_gbf()
             self.current_lambda = self.get_lambda()
 
 
             self.update_graph()
 
-            if bounded_sparsity and (self.current_sparsity >= self.max_sparsity):
-                self.current_sparsity = int(self.max_sparsity)
-                break
+
 
             mean_loss = sum(self.epoch_losses) / len(self.epoch_losses)
             print('epoch:%3d,' % epoch, 'loss: %6.5f' % mean_loss)
@@ -725,14 +726,14 @@ class AdaGAE():
         size = transposed_data_matrix.shape[1]
 
         distances = distance(transposed_data_matrix, transposed_data_matrix)
-
+        tensorboard.add_scalar(EMBEDDING_DIAMETER, distances.median()*(1e5), self.global_step)
         distances = torch.max(distances, torch.t(distances))
         sorted_distances, _ = distances.sort(dim=1)
 
         # distance to the k-th nearest neighbor ONLY GENES:
         top_k_genes = sorted_distances[:ge_count, self.current_gene_sparsity]
         top_k_genes = torch.t(top_k_genes.repeat(size, 1)) + 10 ** -10
-
+        tensorboard.add_scalar(DISTANCE_TO_KNN_TAG, top_k_genes.median() * (1e5), self.global_step)
         # summatory of the nearest k distances ONLY GENES:
         sum_top_k_genes = torch.sum(sorted_distances[:ge_count, 0:self.current_gene_sparsity], dim=1)
         sum_top_k_genes = torch.t(sum_top_k_genes.repeat(size, 1))
@@ -959,8 +960,7 @@ add_self_loops_euclidean = False
 gcn = False
 init_gbf = 7
 min_gbf = 1
-bounded_sparsity = False
-rq_minimization_objective = False
+rq_minimization_objective = True
 
 link_ds, ccre_ds = load_data(datapath, genes_to_pick)
 
