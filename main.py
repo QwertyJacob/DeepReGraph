@@ -297,6 +297,8 @@ TOTAL_LOSS_LABEL: str = 'Total_Loss'
 LAMBDA_LABEL: str = 'Lambda'
 GENETIC_BALANCE_FACTOR_LABEL: str = 'GeneticBalanceFactor'
 GENOMIC_C_LABEL: str = 'GenomicC'
+LOCAL_CE_LOSS_WEIGHT_LABEL: str = 'localCELossWeight'
+GLOBAL_CE_LOSS_WEIGHT_LABEL: str = 'globalCELossWeight'
 GE_CC_SCORE_TAG: str = 'GeneCCScore'
 CCRE_CC_SCORE_TAG: str = 'CCRECCScore'
 HETEROGENEITY_SCORE_TAG: str = 'HeterogeneityScore'
@@ -408,6 +410,8 @@ class AdaGAE():
         self.current_lambda = init_lambda
         self.current_cluster_number = init_cluster_num
         self.init_adj_matrices()
+        self.current_local_ce_loss_weight = init_local_ce_loss_weight
+        self.current_global_ce_loss_weight = init_global_ce_loss_weight
         if not self.pre_trained: self.init_embedding()
 
     def init_adj_matrices(self):
@@ -490,7 +494,11 @@ class AdaGAE():
         global_dist_loss = global_dist_loss.mean()
         tensorboard.add_scalar(GLOBAL_DIST_LOSS, global_dist_loss.item(), self.global_step)
 
-        loss += local_dist_loss + global_dist_loss
+        if local_ce_loss:
+            loss += self.current_local_ce_loss_weight * local_dist_loss
+
+        if global_ce_loss:
+            loss += self.current_global_ce_loss_weight * global_dist_loss
 
         degree = self.adj.sum(dim=1)
         laplacian = torch.diag(degree) - self.adj
@@ -627,9 +635,12 @@ class AdaGAE():
         tensorboard.add_scalar(SLOPE_LABEL, self.current_genomic_slope, self.global_step)
         self.current_genetic_balance_factor = action[3]
         tensorboard.add_scalar(GENETIC_BALANCE_FACTOR_LABEL, float(self.current_genetic_balance_factor),self.global_step)
-
         self.current_genomic_C = action[4]
         tensorboard.add_scalar(GENOMIC_C_LABEL, self.current_genomic_C, self.global_step)
+        self.current_local_ce_loss_weight = action[5]
+        tensorboard.add_scalar(LOCAL_CE_LOSS_WEIGHT_LABEL, self.current_local_ce_loss_weight,self.global_step)
+        self.current_global_ce_loss_weight = action[6]
+        tensorboard.add_scalar(GLOBAL_CE_LOSS_WEIGHT_LABEL, self.current_local_ce_loss_weight,self.global_step)
 
         self.gae_nn.optimizer.zero_grad()
 
@@ -688,15 +699,18 @@ class AdaGAE():
                                              self.current_sparsity,
                                              self.current_genomic_slope,
                                              self.current_genetic_balance_factor,
-                                             self.current_genomic_C]).to(self.device)
+                                             self.current_genomic_C,
+                                             self.current_local_ce_loss_weight,
+                                             self.current_global_ce_loss_weight]).to(self.device)
 
                 reward, loss, done_flag = self.step(dummy_action)
                 self.epoch_losses.append(loss.item())
 
             self.current_sparsity += sparsity_increment
             self.current_genetic_balance_factor = self.get_gbf()
-            self.current_lambda = self.get_lambda()
-
+            self.current_lambda = self.get_dinamic_param(init_lambda, final_lambda)
+            self.current_local_ce_loss_weight = self.get_dinamic_param(init_local_ce_loss_weight, final_local_ce_loss_weight)
+            self.current_global_ce_loss_weight = self.get_dinamic_param(init_global_ce_loss_weight, final_global_ce_loss_weight)
 
             self.update_graph()
 
@@ -709,14 +723,14 @@ class AdaGAE():
 
         return min_gbf + ((init_gbf-1) / (((2*self.global_step)/(max_epoch*max_iter))**5+1))
 
-    def get_lambda(self):
-        if final_lambda - init_lambda >= 0:
+    def get_dinamic_param(self, init_value, final_value):
+        if final_value - init_value >= 0:
             #lambda goes from low to high, then the exponent will be negative
             exponent = -1
         else:
             # lambda goes from high to low, then the exponent should be positive:
             exponent = 1
-        return init_lambda + ((final_lambda - init_lambda) * (1 / (1 + math.e ** ((exponent) * (self.global_step - ((max_epoch * max_iter) / 2)) / (4*(max_epoch))))))
+        return init_value + ((final_value - init_value) * (1 / (1 + math.e ** ((exponent) * (self.global_step - ((max_epoch * max_iter) / 2)) / (4*(max_epoch))))))
 
     def cal_weights_via_CAN(self, transposed_data_matrix):
         """
@@ -961,6 +975,12 @@ gcn = False
 init_gbf = 7
 min_gbf = 1
 rq_minimization_objective = True
+local_ce_loss = False
+init_local_ce_loss_weight = 1
+final_local_ce_loss_weight = 1
+global_ce_loss = True
+init_global_ce_loss_weight = 1
+final_global_ce_loss_weight = 1
 
 link_ds, ccre_ds = load_data(datapath, genes_to_pick)
 
@@ -977,7 +997,7 @@ input_dim = X.shape[1]
 layers = [input_dim, 24, 12]
 
 if __name__ == '__main__':
-    modelname = '/basic_gnn'
+    modelname = '/only_CE_local'
 
     tensorboard = SummaryWriter(LOG_DIR + modelname)
 
