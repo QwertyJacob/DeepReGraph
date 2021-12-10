@@ -649,7 +649,7 @@ class AdaGAE():
         self.current_local_ce_loss_weight = action[5]
         tensorboard.add_scalar(LOCAL_CE_LOSS_WEIGHT_LABEL, self.current_local_ce_loss_weight,self.global_step)
         self.current_global_ce_loss_weight = action[6]
-        tensorboard.add_scalar(GLOBAL_CE_LOSS_WEIGHT_LABEL, self.current_local_ce_loss_weight,self.global_step)
+        tensorboard.add_scalar(GLOBAL_CE_LOSS_WEIGHT_LABEL, self.current_global_ce_loss_weight,self.global_step)
 
         self.gae_nn.optimizer.zero_grad()
 
@@ -664,6 +664,7 @@ class AdaGAE():
         done_flag = False
 
         gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = 0, 0, 0, 0, 0, 0
+
 
         if self.iteration % 10 == 0:
             visual_clustering = False
@@ -733,13 +734,8 @@ class AdaGAE():
         return min_gbf + ((init_gbf-1) / (((2*self.global_step)/(max_epoch*max_iter))**5+1))
 
     def get_dinamic_param(self, init_value, final_value):
-        if final_value - init_value >= 0:
-            #lambda goes from low to high, then the exponent will be negative
-            exponent = -1
-        else:
-            # lambda goes from high to low, then the exponent should be positive:
-            exponent = 1
-        return init_value + ((final_value - init_value) * (1 / (1 + math.e ** ((exponent) * (self.global_step - ((max_epoch * max_iter) / 2)) / (4*(max_epoch))))))
+        T = max_epoch * max_iter
+        return init_value + ((final_value - init_value) * (1 / (1 + math.e ** (-1 * (self.global_step - (T/ 2)) / (T/10)))))
 
     def cal_weights_via_CAN(self, transposed_data_matrix):
         """
@@ -863,24 +859,27 @@ class AdaGAE():
                 n_neighbors=n_neighbors,
                 min_dist=min_dist
             ).fit_transform(cpu_embedding)
-
-            clusterer = hdbscan.HDBSCAN(min_cluster_size=100, min_samples=20)
-            prediction = clusterer.fit_predict(umap_embedding)
-            clusters = np.unique(prediction)
-            if -1 in clusters:
-                self.current_cluster_number = len(clusters) - 1
-            else:
-                self.current_cluster_number = len(clusters)
-            if not eval:
-                tensorboard.add_scalar(CLUSTER_NUMBER_LABEL, self.current_cluster_number, self.global_step)
-            self.plot_clustering(prediction, umap_embedding)
             self.plot_classes(umap_embedding)
-
+            if clusterize:
+                clusterer = hdbscan.HDBSCAN(min_cluster_size=100, min_samples=20)
+                prediction = clusterer.fit_predict(umap_embedding)
+                clusters = np.unique(prediction)
+                if -1 in clusters:
+                    self.current_cluster_number = len(clusters) - 1
+                else:
+                    self.current_cluster_number = len(clusters)
+                if not eval:
+                    tensorboard.add_scalar(CLUSTER_NUMBER_LABEL, self.current_cluster_number, self.global_step)
+                self.plot_clustering(prediction, umap_embedding)
         else:
-            km = KMeans(n_clusters=self.current_cluster_number).fit(cpu_embedding)
-            prediction = km.predict(cpu_embedding)
+            if clusterize:
+                km = KMeans(n_clusters=self.current_cluster_number).fit(cpu_embedding)
+                prediction = km.predict(cpu_embedding)
 
-        return self.cal_clustering_metric(prediction)
+        if clusterize:
+            return self.cal_clustering_metric(prediction)
+        else:
+            return 0,0,0,0,0,0
 
     def plot_clustering(self, prediction, umap_embedding):
         le = LabelEncoder()
@@ -982,12 +981,12 @@ gcn = False
 init_gbf = 7
 min_gbf = 1
 init_local_ce_loss_weight = 1
-final_local_ce_loss_weight = 1
+final_local_ce_loss_weight = 1.5
 init_global_ce_loss_weight = 1
-final_global_ce_loss_weight = 1
+final_global_ce_loss_weight = 0.5
 init_lambda = 1
 final_lambda = 5
-
+clusterize = True
 
 link_ds, ccre_ds = load_data(datapath, genes_to_pick, chr_to_filter=[16,19])
 
