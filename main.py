@@ -261,7 +261,7 @@ def load_data(datapath, num_of_genes=0, tight=True, chr_to_filter=None):
         for chr_number in chr_to_filter:
             filtered_ccre_ds = pd.concat([filtered_ccre_ds, ccre_ds[ccre_ds['cCRE_ID'].str.startswith('chr'+str(chr_number))]])
 
-    ccre_ds = filtered_ccre_ds
+        ccre_ds = filtered_ccre_ds
     ####################LINK MATRIX #####################################################
     link_ds = pd.read_csv(datapath + '/Link_Matrix.tsv', sep='\t')
     link_ds.columns = ['EnsembleID', 'cCRE_ID', 'Distance']
@@ -343,8 +343,10 @@ class AdaGAE_NN(torch.nn.Module):
             # basic GNN model (hamilton's book)
             self.W1_neigh = get_weight_initial([self.input_dim, self.mid_dim])
             self.W1_self = get_weight_initial([self.input_dim, self.mid_dim])
+            self.W1_bias = get_weight_initial([self.data_matrix.shape[0], self.mid_dim])
             self.W2_neigh = get_weight_initial([self.mid_dim, self.embedding_dim])
             self.W2_self = get_weight_initial([self.mid_dim, self.embedding_dim])
+            self.W2_bias = get_weight_initial([self.data_matrix.shape[0], self.embedding_dim])
 
         if pre_trained:
             self.load_state_dict(torch.load(datapath + pre_trained_state_dict, map_location=torch.device(self.device)))
@@ -359,11 +361,11 @@ class AdaGAE_NN(torch.nn.Module):
         else:
             # basic GNN model (hamilton's book)
             embedding_1 = norm_adj_matrix.mm(self.data_matrix.matmul(self.W1_neigh))
-            embedding_1 += self.data_matrix.matmul(self.W1_self)
+            embedding_1 += self.data_matrix.matmul(self.W1_self) + self.W1_bias
             embedding_1 = torch.relu(embedding_1)
 
             embedding = (norm_adj_matrix.matmul(embedding_1)).matmul(self.W2_neigh)
-            embedding += embedding_1.matmul(self.W2_self)
+            embedding += embedding_1.matmul(self.W2_self) + self.W2_bias
             self.embedding = torch.relu(embedding)
 
         distances = distance(self.embedding.t(), self.embedding.t())
