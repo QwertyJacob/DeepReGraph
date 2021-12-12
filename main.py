@@ -711,7 +711,7 @@ class AdaGAE():
         gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = 0, 0, 0, 0, 0, 0
 
 
-        if self.iteration % (5 * max_iter) == 0:
+        if self.iteration % (graphical_report_period_epochs * max_iter) == 0:
             #visual_clustering = False
             #if self.iteration % (2 * max_iter) == 0:
             #    visual_clustering = True
@@ -1040,6 +1040,7 @@ diff_RQ = False
 diff_local_loss = False
 diff_global_loss = False
 diff_loss_factor = 5
+graphical_report_period_epochs = 10
 
 link_ds, ccre_ds = load_data(datapath, genes_to_pick, chr_to_filter=[16,19])
 
@@ -1048,6 +1049,8 @@ X, ge_count, ccre_count = get_hybrid_feature_matrix(link_ds, ccre_ds)
 links = get_genomic_distance_matrix(link_ds)
 
 ge_class_labels = ['genes_'+str(ge_cluster_label) for ge_cluster_label in get_primitive_gene_clusters()]
+
+print('Analyzing ',ge_count, ' genes and ',ccre_count, ' ccres for a total of ', ge_count + ccre_count, ' elements.')
 
 
 
