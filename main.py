@@ -723,7 +723,7 @@ class AdaGAE():
                 self.epoch_losses.append(loss.item())
 
             self.current_sparsity += sparsity_increment
-            self.current_genetic_balance_factor = self.get_gbf()
+            self.current_genetic_balance_factor = self.get_dinamic_param(init_gbf, final_gbf)
             self.current_lambda = self.get_dinamic_param(init_lambda, final_lambda)
             self.current_local_ce_loss_weight = self.get_dinamic_param(init_local_ce_loss_weight, final_local_ce_loss_weight)
             self.current_global_ce_loss_weight = self.get_dinamic_param(init_global_ce_loss_weight, final_global_ce_loss_weight)
@@ -735,9 +735,6 @@ class AdaGAE():
             mean_loss = sum(self.epoch_losses) / len(self.epoch_losses)
             print('epoch:%3d,' % epoch, 'loss: %6.5f' % mean_loss)
 
-    def get_gbf(self):
-
-        return min_gbf + ((init_gbf-1) / (((2*self.global_step)/(max_epoch*max_iter))**5+1))
 
     def get_dinamic_param(self, init_value, final_value):
         T = max_epoch * max_iter
