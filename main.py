@@ -507,13 +507,20 @@ class AdaGAE():
         # This acts as an attractive force for the embedding learning:
         if diff_local_loss:
             ge_local_dist_loss = -(self.raw_adj[:ge_count,:ge_count] * torch.log(recons[:ge_count,:ge_count] + 10 ** -10))
+            ge_local_dist_loss = ge_local_dist_loss.sum(dim=1)
+            ge_local_dist_loss = ge_local_dist_loss.mean()
+
             ccre_local_dist_loss = -(self.raw_adj[ge_count:,ge_count:] * torch.log(recons[ge_count:,ge_count:] + 10 ** -10))
+            ccre_local_dist_loss = ccre_local_dist_loss.sum(dim=1)
+            ccre_local_dist_loss = ccre_local_dist_loss.mean()
+
             local_dist_loss = (ge_local_dist_loss / diff_loss_factor) + ccre_local_dist_loss
+
         else:
             local_dist_loss = -(self.raw_adj * torch.log(recons + 10 ** -10))
+            local_dist_loss = local_dist_loss.sum(dim=1)
+            local_dist_loss = local_dist_loss.mean()
 
-        local_dist_loss = local_dist_loss.sum(dim=1)
-        local_dist_loss = local_dist_loss.mean()
         tensorboard.add_scalar(LOCAL_DIST_LOSS, local_dist_loss.item(), self.global_step)
         # If we want to take into account for global distances, we need the Cross Entropy rather than the KL divergence.
         # If you dont believe it, make a limit study following the one in https://towardsdatascience.com/how-exactly-umap-works-13e3040e1668
@@ -521,14 +528,22 @@ class AdaGAE():
 
         if diff_global_loss:
             # We should differentiate this repulsive force based on each "modality"
+            # We give more strength to the gene-gene separation force
             ge_global_dist_loss = -(1 - self.raw_adj[:ge_count,:ge_count]) * torch.log(1 - (recons[:ge_count,:ge_count]))
-            ccre_global_dist_loss = -(1 - self.raw_adj[ge_count:,ge_count:]) * torch.log(1 - (recons[ge_count:,ge_count:]))
-            global_dist_loss = (ge_global_dist_loss / diff_loss_factor) + ccre_global_dist_loss
-        else:
-            global_dist_loss = -(1 - self.raw_adj) * torch.log(1-(recons))
+            ge_global_dist_loss = ge_global_dist_loss.sum(dim=1)
+            ge_global_dist_loss = ge_global_dist_loss.mean()
 
-        global_dist_loss = global_dist_loss.sum(dim=1)
-        global_dist_loss = global_dist_loss.mean()
+            ccre_global_dist_loss = -(1 - self.raw_adj[ge_count:,ge_count:]) * torch.log(1 - (recons[ge_count:,ge_count:]))
+            ccre_global_dist_loss = ccre_global_dist_loss.sum(dim=1)
+            ccre_global_dist_loss = ccre_global_dist_loss.mean()
+
+            global_dist_loss = ge_global_dist_loss + (ccre_global_dist_loss/diff_loss_factor)
+
+        else:
+            global_dist_loss = -(1 - self.raw_adj) * torch.log(1-recons)
+            global_dist_loss = global_dist_loss.sum(dim=1)
+            global_dist_loss = global_dist_loss.mean()
+
         tensorboard.add_scalar(GLOBAL_DIST_LOSS, global_dist_loss.item(), self.global_step)
 
         # This loss acts as an attractive force forse the embedding:
