@@ -887,9 +887,12 @@ class AdaGAE():
         element_max_distance_scores = torch.max(link_scores_tensor, dim=0)[0]
         element_max_similarity_scores = torch.max(weights, dim=0)[0]
         scaled_link_scores = (link_scores_tensor.t() * element_max_similarity_scores / element_max_distance_scores)
-        scaled_link_scores = scaled_link_scores.t() * self.current_genetic_balance_factor
+        scaled_link_scores = scaled_link_scores.t()
 
-        weights += scaled_link_scores
+
+
+
+        weights = (weights * (1 - self.current_genetic_balance_factor)) +  (scaled_link_scores * self.current_genetic_balance_factor)
 
 
         if not add_self_loops_euclidean:
@@ -1041,8 +1044,8 @@ init_cluster_num = 12
 add_self_loops_genomic = False
 add_self_loops_euclidean = False
 gcn = False
-init_gbf = 1.5
-final_gbf = 0.5
+init_gbf = 1
+final_gbf = 0
 init_local_ce_loss_weight = 1
 final_local_ce_loss_weight = 1.5
 init_global_ce_loss_weight = 1
