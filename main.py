@@ -31,7 +31,7 @@
 from tqdm import tqdm as tqdm
 datapath = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\GE_Datasets\\'
 
-reports_path = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\RL_developmental_studies\\Reports\\'
+reports_path = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\RL_developmental_studies\\Reports\\tight_var_data\\'
 
 LOG_DIR = 'local_runs/'
 
@@ -283,6 +283,18 @@ def load_data(datapath, num_of_genes=0, tight=True, chr_to_filter=None):
     ccre_ds = ccre_ds[ccre_ds['cCRE_ID'].isin(ccres)]
 
     return link_ds, ccre_ds
+
+
+def get_primitive_gene_clusters():
+    gene_primitive_clusters_path = reports_path
+    kmeans_ds = pd.read_csv(gene_primitive_clusters_path + 'kmeans_clustered_genes_4.csv')
+    primitive_ge_clustered_ds = kmeans_ds.set_index('EnsembleID').drop('Unnamed: 0', axis=1)
+    primitive_ge_clustered_ds.columns = ['primitive_cluster']
+    gene_ds = link_ds.reset_index().drop_duplicates('EnsembleID').set_index('EnsembleID')
+    prim_gene_ds = gene_ds.join(primitive_ge_clustered_ds)['primitive_cluster'].reset_index()
+
+    return np.array(prim_gene_ds.primitive_cluster.to_list())
+
 
 
 
@@ -904,20 +916,25 @@ class AdaGAE():
         plt.show()
 
     def plot_classes(self, umap_embedding):
-        classes = ['genes', 'ccres']
-        class_labels = np.array([classes[0]] * ge_count + [classes[1]] * ccre_count)
-        alphas = [1, 0.3]
+
+        class_labels = np.array(ge_class_labels + ['ccres'] * ccre_count)
+        classes = np.unique(class_labels)
+
+        classplot_alphas = [0.1, 1, 1, 1, 1]
+        classplot_markers = ["o", "^", "v", "v", "^"]
+        classplot_colors = ['aquamarine', 'r', 'g', 'g', 'r']
+        classplot_sizes = [10, 40, 40, 40, 40]
         for idx, elem_class in enumerate(classes):
             cluster_points = _safe_indexing(umap_embedding, class_labels == elem_class)
-            cluster_marker = markers[idx % len(markers)]
-            cluster_color = colors[idx % len(colors)]
-            cluster_marker_size = sizes[idx % len(sizes)]
+            cluster_marker = classplot_markers[idx % len(markers)]
+            cluster_color = classplot_colors[idx % len(colors)]
+            cluster_marker_size = classplot_sizes[idx % len(sizes)]
             plt.scatter(cluster_points[:, 0],
                         cluster_points[:, 1],
                         marker=cluster_marker,
                         color=cluster_color,
                         label=elem_class,
-                        alpha=alphas[idx],
+                        alpha=classplot_alphas[idx],
                         s=cluster_marker_size)
         plt.legend()
         if not eval:
@@ -982,7 +999,7 @@ add_self_loops_genomic = False
 add_self_loops_euclidean = False
 gcn = False
 init_gbf = 7
-min_gbf = 1
+final_gbf = 1
 init_local_ce_loss_weight = 1
 final_local_ce_loss_weight = 1.5
 init_global_ce_loss_weight = 1
@@ -997,6 +1014,10 @@ link_ds, ccre_ds = load_data(datapath, genes_to_pick, chr_to_filter=[16,19])
 X, ge_count, ccre_count = get_hybrid_feature_matrix(link_ds, ccre_ds)
 
 links = get_genomic_distance_matrix(link_ds)
+
+ge_class_labels = ['genes_'+str(ge_cluster_label) for ge_cluster_label in get_primitive_gene_clusters()]
+
+
 
 # POSITIVE_X
 # X += torch.abs(torch.min(X))
