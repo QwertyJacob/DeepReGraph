@@ -517,13 +517,17 @@ class AdaGAE():
         global_dist_loss = global_dist_loss.mean()
         tensorboard.add_scalar(GLOBAL_DIST_LOSS, global_dist_loss.item(), self.global_step)
 
-
+        # This loss acts as an attractive force forse the embedding:
+        # It strengthens elemment-wise similarities
+        # We should differentiate this attractive force based on each "modality"
+        diff_mask = torch.ones(self.gae_nn.embedding.shape).to(device)
+        diff_mask[:ge_count] /= self.global_ccres_over_genes_ratio
         degree = self.adj.sum(dim=1)
         laplacian = torch.diag(degree) - self.adj
-        # This is exactly equation 11 in the paper.
+        # This is exactly equation 11 in the AdaGAE paper.
         # Notice that torch.trace return the sum of the elements in the diagonal of the input matrix.
         local_distance_preserving_loss = torch.trace(
-            self.gae_nn.embedding.t().matmul(laplacian).matmul(self.gae_nn.embedding)) / size
+            (self.gae_nn.embedding*diff_mask).t().matmul(laplacian).matmul((self.gae_nn.embedding*diff_mask))) / size
         tensorboard.add_scalar(LOCALDISTPRESERVING_LABEL, local_distance_preserving_loss.item(), self.global_step)
 
         loss += self.current_local_ce_loss_weight * local_dist_loss
@@ -684,10 +688,11 @@ class AdaGAE():
         gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = 0, 0, 0, 0, 0, 0
 
 
-        if self.iteration % 10 == 0:
-            visual_clustering = False
-            if self.iteration % (40 * max_iter) == 0:
-                visual_clustering = True
+        if self.iteration % (5 * max_iter) == 0:
+            #visual_clustering = False
+            #if self.iteration % (2 * max_iter) == 0:
+            #    visual_clustering = True
+            visual_clustering = True
             gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = self.clustering(
                 visual_clustering)
             tensorboard.add_scalar(GE_CC_SCORE_TAG, gene_cc_score, self.global_step)
@@ -989,25 +994,25 @@ init_genomic_C = 1e5
 genes_to_pick = 0
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 max_iter = 30
-max_epoch = 100
+max_epoch = 50
 sparsity_increment = 1
 learning_rate = 5 * 10 ** -3
-init_sparsity = 30
+init_sparsity = 5
 init_genomic_slope = 0.2
 init_cluster_num = 12
 add_self_loops_genomic = False
 add_self_loops_euclidean = False
 gcn = False
-init_gbf = 7
-final_gbf = 1
+init_gbf = 1.5
+final_gbf = 0.5
 init_local_ce_loss_weight = 1
 final_local_ce_loss_weight = 1.5
 init_global_ce_loss_weight = 1
 final_global_ce_loss_weight = 0.5
-init_lambda = 1
-final_lambda = 5
-clusterize = True
-softmax_reconstruction = False
+init_lambda = 0
+final_lambda = 4
+clusterize = False
+softmax_reconstruction = True
 
 link_ds, ccre_ds = load_data(datapath, genes_to_pick, chr_to_filter=[16,19])
 
