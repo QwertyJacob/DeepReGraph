@@ -369,8 +369,12 @@ class AdaGAE_NN(torch.nn.Module):
             self.embedding = torch.relu(embedding)
 
         distances = distance(self.embedding.t(), self.embedding.t())
-        softmax = torch.nn.Softmax(dim=1)
-        recons_w = softmax(-distances)
+        if softmax_reconstruction:
+            softmax = torch.nn.Softmax(dim=1)
+            recons_w = softmax(-distances)
+        else:
+            recons_w = 1 / (distances + 1)
+            recons_w /= recons_w.sum(dim=1).reshape([recons_w.shape[0], 1])
         return recons_w + 10 ** -10
 
 
@@ -989,6 +993,7 @@ final_global_ce_loss_weight = 0.5
 init_lambda = 1
 final_lambda = 5
 clusterize = True
+softmax_reconstruction = False
 
 link_ds, ccre_ds = load_data(datapath, genes_to_pick, chr_to_filter=[16,19])
 
