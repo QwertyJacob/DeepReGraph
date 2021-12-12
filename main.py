@@ -492,47 +492,70 @@ class AdaGAE():
         # and that raw_weigths is the p distribution. (before the symmetrization)
         # the following line is the definition of kl divergence
         '''
-        kl_loss = self.raw_adj * torch.log(self.raw_adj / recons + 10 ** -10)
-        kl_loss = kl_loss.sum(dim=1)
-        kl_loss = kl_loss.mean()
-        tensorboard.add_scalar(KL, kl_loss.item(), self.global_step)
+        # kl_loss = self.raw_adj * torch.log(self.raw_adj / recons + 10 ** -10)
+        # kl_loss = kl_loss.sum(dim=1)
+        # kl_loss = kl_loss.mean()
+        # tensorboard.add_scalar(KL, kl_loss.item(), self.global_step)
 
 
-        useless_kl_loss = self.raw_adj * torch.log(self.raw_adj + 10 ** -10)
-        useless_kl_loss = useless_kl_loss.sum(dim=1)
-        useless_kl_loss = useless_kl_loss.mean()
-        tensorboard.add_scalar(FIRST_KL_TERM, useless_kl_loss.item(), self.global_step)
+        # useless_kl_loss = self.raw_adj * torch.log(self.raw_adj + 10 ** -10)
+        # useless_kl_loss = useless_kl_loss.sum(dim=1)
+        # useless_kl_loss = useless_kl_loss.mean()
+        # tensorboard.add_scalar(FIRST_KL_TERM, useless_kl_loss.item(), self.global_step)
 
         #Actually the KL divergence is computed by the sole second decomposed term -P(X)log(Q(Z))
-        local_dist_loss = -(self.raw_adj * torch.log(recons + 10 ** -10))
-        # In the paper they mention the minimization of the row-wise kl divergence.
-        # here we know we have to compute the mean kl divergence for each point.
+        # This acts as an attractive force for the embedding learning:
+        if diff_local_loss:
+            ge_local_dist_loss = -(self.raw_adj[:ge_count,:ge_count] * torch.log(recons[:ge_count,:ge_count] + 10 ** -10))
+            ccre_local_dist_loss = -(self.raw_adj[ge_count:,ge_count:] * torch.log(recons[ge_count:,ge_count:] + 10 ** -10))
+            local_dist_loss = (ge_local_dist_loss / diff_loss_factor) + ccre_local_dist_loss
+        else:
+            local_dist_loss = -(self.raw_adj * torch.log(recons + 10 ** -10))
+
         local_dist_loss = local_dist_loss.sum(dim=1)
         local_dist_loss = local_dist_loss.mean()
         tensorboard.add_scalar(LOCAL_DIST_LOSS, local_dist_loss.item(), self.global_step)
-        # But if we want to take into account for global distances, we need the Cross Entropy rather than the KL divergence.
+        # If we want to take into account for global distances, we need the Cross Entropy rather than the KL divergence.
         # If you dont believe it, make a limit study following the one in https://towardsdatascience.com/how-exactly-umap-works-13e3040e1668
-        global_dist_loss = -(1 - self.raw_adj) * torch.log(1-recons)
+        # This is a repulsive-force for the embedding,
+
+        if diff_global_loss:
+            # We should differentiate this repulsive force based on each "modality"
+            ge_global_dist_loss = -(1 - self.raw_adj[:ge_count,:ge_count]) * torch.log(1 - (recons[:ge_count,:ge_count]))
+            ccre_global_dist_loss = -(1 - self.raw_adj[ge_count:,ge_count:]) * torch.log(1 - (recons[ge_count:,ge_count:]))
+            global_dist_loss = (ge_global_dist_loss / diff_loss_factor) + ccre_global_dist_loss
+        else:
+            global_dist_loss = -(1 - self.raw_adj) * torch.log(1-(recons))
+
         global_dist_loss = global_dist_loss.sum(dim=1)
         global_dist_loss = global_dist_loss.mean()
         tensorboard.add_scalar(GLOBAL_DIST_LOSS, global_dist_loss.item(), self.global_step)
 
         # This loss acts as an attractive force forse the embedding:
         # It strengthens elemment-wise similarities
-        # We should differentiate this attractive force based on each "modality"
-        diff_mask = torch.ones(self.gae_nn.embedding.shape).to(device)
-        diff_mask[:ge_count] /= self.global_ccres_over_genes_ratio
         degree = self.adj.sum(dim=1)
         laplacian = torch.diag(degree) - self.adj
-        # This is exactly equation 11 in the AdaGAE paper.
-        # Notice that torch.trace return the sum of the elements in the diagonal of the input matrix.
-        local_distance_preserving_loss = torch.trace(
-            (self.gae_nn.embedding*diff_mask).t().matmul(laplacian).matmul((self.gae_nn.embedding*diff_mask))) / size
-        tensorboard.add_scalar(LOCALDISTPRESERVING_LABEL, local_distance_preserving_loss.item(), self.global_step)
+
+        if diff_RQ:
+            # We should differentiate this attractive force based on each "modality"
+            ge_local_distance_preserving_loss = torch.trace(
+                (self.gae_nn.embedding[:ge_count]).t().matmul(laplacian[:ge_count, :ge_count]).matmul(
+                    (self.gae_nn.embedding[:ge_count]))) / size
+            ccre_local_distance_preserving_loss = torch.trace(
+                (self.gae_nn.embedding[ge_count:]).t().matmul(laplacian[ge_count:,ge_count:]).matmul(
+                    (self.gae_nn.embedding[ge_count:]))) / size
+            rayleigh_quoeficcient_loss = (ge_local_distance_preserving_loss / diff_loss_factor) + ccre_local_distance_preserving_loss
+        else:
+            # This is exactly equation 11 in the AdaGAE paper.
+            # Notice that torch.trace return the sum of the elements in the diagonal of the input matrix.
+            rayleigh_quoeficcient_loss = torch.trace(
+                self.gae_nn.embedding.t().matmul(laplacian).matmul(self.gae_nn.embedding)) / size
+
+        tensorboard.add_scalar(LOCALDISTPRESERVING_LABEL, rayleigh_quoeficcient_loss.item(), self.global_step)
 
         loss += self.current_local_ce_loss_weight * local_dist_loss
         loss += self.current_global_ce_loss_weight * global_dist_loss
-        loss += self.current_lambda * local_distance_preserving_loss
+        loss += self.current_lambda * rayleigh_quoeficcient_loss
 
         tensorboard.add_scalar(TOTAL_LOSS_LABEL, loss.item(), self.global_step)
 
@@ -925,7 +948,7 @@ class AdaGAE():
         class_labels = np.array(ge_class_labels + ['ccres'] * ccre_count)
         classes = np.unique(class_labels)
 
-        classplot_alphas = [0.1, 1, 1, 1, 1]
+        classplot_alphas = [0.3, 1, 1, 1, 1]
         classplot_markers = ["o", "^", "v", "v", "^"]
         classplot_colors = ['aquamarine', 'r', 'g', 'g', 'r']
         classplot_sizes = [10, 40, 40, 40, 40]
@@ -1013,6 +1036,10 @@ init_lambda = 0
 final_lambda = 4
 clusterize = False
 softmax_reconstruction = True
+diff_RQ = False
+diff_local_loss = False
+diff_global_loss = False
+diff_loss_factor = 5
 
 link_ds, ccre_ds = load_data(datapath, genes_to_pick, chr_to_filter=[16,19])
 
@@ -1033,7 +1060,7 @@ input_dim = X.shape[1]
 layers = [input_dim, 24, 12]
 
 if __name__ == '__main__':
-    modelname = '/only_CE_local'
+    modelname = '/non_diff_RQ'
 
     tensorboard = SummaryWriter(LOG_DIR + modelname)
 
