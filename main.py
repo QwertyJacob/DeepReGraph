@@ -491,24 +491,15 @@ class AdaGAE():
         '''
         # notice that recons is actually the q distribution.
         # and that raw_weigths is the p distribution. (before the symmetrization)
-        # the following line is the definition of Cross Entropy
         '''
         # This acts as an attractive force for the embedding learning:
+        local_dist_loss = -(self.raw_adj * torch.log(recons + 10 ** -10))
+
         if diff_local_loss:
-            ge_local_dist_loss = -(self.raw_adj[:ge_count,:ge_count] * torch.log(recons[:ge_count,:ge_count] + 10 ** -10))
-            ge_local_dist_loss = ge_local_dist_loss.sum(dim=1)
-            ge_local_dist_loss = ge_local_dist_loss.mean()
-
-            ccre_local_dist_loss = -(self.raw_adj[ge_count:,ge_count:] * torch.log(recons[ge_count:,ge_count:] + 10 ** -10))
-            ccre_local_dist_loss = ccre_local_dist_loss.sum(dim=1)
-            ccre_local_dist_loss = ccre_local_dist_loss.mean()
-
-            local_dist_loss = (ge_local_dist_loss * lambda_local) + (ccre_local_dist_loss * (1 - lambda_local))
-
-        else:
-            local_dist_loss = -(self.raw_adj * torch.log(recons + 10 ** -10))
-            local_dist_loss = local_dist_loss.sum(dim=1)
-            local_dist_loss = local_dist_loss.mean()
+            local_dist_loss[:ge_count, :ge_count] *= (lambda_local)
+            local_dist_loss[ge_count:,ge_count:] *= (1 - lambda_local)
+        local_dist_loss = local_dist_loss.sum(dim=1)
+        local_dist_loss = local_dist_loss.mean()
 
         tensorboard.add_scalar(LOCAL_DIST_LOSS, local_dist_loss.item(), self.global_step)
 
@@ -517,24 +508,16 @@ class AdaGAE():
         # If you dont believe it, make a limit study following the one in
         # https://towardsdatascience.com/how-exactly-umap-works-13e3040e1668
         # This will act as a more repulsive-force for the embedding:
+        global_dist_loss = -(1 - self.raw_adj) * torch.log(1-recons)
 
         if diff_global_loss:
             # We differentiate this repulsive force based on each "modality"
             # We give more strength to the gene-gene separation force
-            ge_global_dist_loss = -(1 - self.raw_adj[:ge_count,:ge_count]) * torch.log(1 - (recons[:ge_count,:ge_count]))
-            ge_global_dist_loss = ge_global_dist_loss.sum(dim=1)
-            ge_global_dist_loss = ge_global_dist_loss.mean()
+            global_dist_loss[:ge_count, :ge_count] *= (lambda_global)
+            global_dist_loss[ge_count:, ge_count:] *= (1 - lambda_global)
 
-            ccre_global_dist_loss = -(1 - self.raw_adj[ge_count:,ge_count:]) * torch.log(1 - (recons[ge_count:,ge_count:]))
-            ccre_global_dist_loss = ccre_global_dist_loss.sum(dim=1)
-            ccre_global_dist_loss = ccre_global_dist_loss.mean()
-
-            global_dist_loss = (ge_global_dist_loss * lambda_global) + (ccre_global_dist_loss * (lambda_global))
-
-        else:
-            global_dist_loss = -(1 - self.raw_adj) * torch.log(1-recons)
-            global_dist_loss = global_dist_loss.sum(dim=1)
-            global_dist_loss = global_dist_loss.mean()
+        global_dist_loss = global_dist_loss.sum(dim=1)
+        global_dist_loss = global_dist_loss.mean()
 
         tensorboard.add_scalar(GLOBAL_DIST_LOSS, global_dist_loss.item(), self.global_step)
 
@@ -545,13 +528,13 @@ class AdaGAE():
 
         if diff_RQ:
             # We should differentiate this attractive force based on each "modality"
-            ge_local_distance_preserving_loss = torch.trace(
+            ge_rq_loss = torch.trace(
                 (self.gae_nn.embedding[:ge_count]).t().matmul(laplacian[:ge_count, :ge_count]).matmul(
                     (self.gae_nn.embedding[:ge_count]))) / size
-            ccre_local_distance_preserving_loss = torch.trace(
+            ccre_rq_loss = torch.trace(
                 (self.gae_nn.embedding[ge_count:]).t().matmul(laplacian[ge_count:,ge_count:]).matmul(
                     (self.gae_nn.embedding[ge_count:]))) / size
-            rayleigh_quoeficcient_loss = (ge_local_distance_preserving_loss / diff_loss_factor) + ccre_local_distance_preserving_loss
+            rayleigh_quoeficcient_loss = (ge_rq_loss * lambda_rq) + (ccre_rq_loss * (1 - lambda_rq))
         else:
             # This is exactly equation 11 in the AdaGAE paper.
             # Notice that torch.trace return the sum of the elements in the diagonal of the input matrix.
@@ -1042,10 +1025,10 @@ bounded_sparsity = False
 gcn = False
 clusterize=False
 softmax_reconstruction = True
-diff_RQ = False
+diff_RQ = True
 diff_local_loss = True
-diff_global_loss = False
-diff_loss_factor = 0.95
+diff_global_loss = True
+lambda_rq = 0.95
 
 init_gbf = 0.6
 final_gbf = 0
