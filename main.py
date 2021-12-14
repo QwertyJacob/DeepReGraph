@@ -310,6 +310,7 @@ FIRST_KL_TERM:str = 'First_KL_Term'
 KL:str= 'KL'
 GLOBAL_DIST_LOSS: str = 'GlobalDistLoss'
 LOCALDISTPRESERVING_LABEL: str = 'LocalDistPreservingPenalty'
+REPULSIVE_RQ_LOSS_LABEL: str = 'Repulsive_RQ_loss'
 TOTAL_LOSS_LABEL: str = 'Total_Loss'
 LAMBDA_LABEL: str = 'Lambda'
 GENETIC_BALANCE_FACTOR_LABEL: str = 'GeneticBalanceFactor'
@@ -490,20 +491,8 @@ class AdaGAE():
         '''
         # notice that recons is actually the q distribution.
         # and that raw_weigths is the p distribution. (before the symmetrization)
-        # the following line is the definition of kl divergence
+        # the following line is the definition of Cross Entropy
         '''
-        # kl_loss = self.raw_adj * torch.log(self.raw_adj / recons + 10 ** -10)
-        # kl_loss = kl_loss.sum(dim=1)
-        # kl_loss = kl_loss.mean()
-        # tensorboard.add_scalar(KL, kl_loss.item(), self.global_step)
-
-
-        # useless_kl_loss = self.raw_adj * torch.log(self.raw_adj + 10 ** -10)
-        # useless_kl_loss = useless_kl_loss.sum(dim=1)
-        # useless_kl_loss = useless_kl_loss.mean()
-        # tensorboard.add_scalar(FIRST_KL_TERM, useless_kl_loss.item(), self.global_step)
-
-        #Actually the KL divergence is computed by the sole second decomposed term -P(X)log(Q(Z))
         # This acts as an attractive force for the embedding learning:
         if diff_local_loss:
             ge_local_dist_loss = -(self.raw_adj[:ge_count,:ge_count] * torch.log(recons[:ge_count,:ge_count] + 10 ** -10))
@@ -514,7 +503,7 @@ class AdaGAE():
             ccre_local_dist_loss = ccre_local_dist_loss.sum(dim=1)
             ccre_local_dist_loss = ccre_local_dist_loss.mean()
 
-            local_dist_loss = (ge_local_dist_loss / diff_loss_factor) + ccre_local_dist_loss
+            local_dist_loss = (ge_local_dist_loss * lambda_local) + (ccre_local_dist_loss * (1 - lambda_local))
 
         else:
             local_dist_loss = -(self.raw_adj * torch.log(recons + 10 ** -10))
@@ -522,12 +511,15 @@ class AdaGAE():
             local_dist_loss = local_dist_loss.mean()
 
         tensorboard.add_scalar(LOCAL_DIST_LOSS, local_dist_loss.item(), self.global_step)
-        # If we want to take into account for global distances, we need the Cross Entropy rather than the KL divergence.
-        # If you dont believe it, make a limit study following the one in https://towardsdatascience.com/how-exactly-umap-works-13e3040e1668
-        # This is a repulsive-force for the embedding,
+
+
+        # If we want to take into account for global distances, we need the Fuzzy Cross Entropy.
+        # If you dont believe it, make a limit study following the one in
+        # https://towardsdatascience.com/how-exactly-umap-works-13e3040e1668
+        # This will act as a more repulsive-force for the embedding:
 
         if diff_global_loss:
-            # We should differentiate this repulsive force based on each "modality"
+            # We differentiate this repulsive force based on each "modality"
             # We give more strength to the gene-gene separation force
             ge_global_dist_loss = -(1 - self.raw_adj[:ge_count,:ge_count]) * torch.log(1 - (recons[:ge_count,:ge_count]))
             ge_global_dist_loss = ge_global_dist_loss.sum(dim=1)
@@ -537,7 +529,7 @@ class AdaGAE():
             ccre_global_dist_loss = ccre_global_dist_loss.sum(dim=1)
             ccre_global_dist_loss = ccre_global_dist_loss.mean()
 
-            global_dist_loss = ge_global_dist_loss + (ccre_global_dist_loss/diff_loss_factor)
+            global_dist_loss = (ge_global_dist_loss * lambda_global) + (ccre_global_dist_loss * (lambda_global))
 
         else:
             global_dist_loss = -(1 - self.raw_adj) * torch.log(1-recons)
@@ -546,8 +538,8 @@ class AdaGAE():
 
         tensorboard.add_scalar(GLOBAL_DIST_LOSS, global_dist_loss.item(), self.global_step)
 
-        # This loss acts as an attractive force forse the embedding:
-        # It strengthens elemment-wise similarities
+        # This loss acts as an attractive force for the embedding:
+        # It strengthens element-wise similarities
         degree = self.adj.sum(dim=1)
         laplacian = torch.diag(degree) - self.adj
 
@@ -573,6 +565,7 @@ class AdaGAE():
         loss += self.current_lambda * rayleigh_quoeficcient_loss
 
         tensorboard.add_scalar(TOTAL_LOSS_LABEL, loss.item(), self.global_step)
+
 
         self.adj.to('cpu')
         self.raw_adj.to('cpu')
@@ -1028,37 +1021,45 @@ def save(epoch):
 ###########
 ## HYPER-PARAMS
 ###########
-
-eval = False
+eval=False
 pre_trained = False
-init_genomic_C = 1e5
-genes_to_pick = 0
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-max_iter = 30
-max_epoch = 50
-sparsity_increment = 1
+genes_to_pick = 0
 learning_rate = 5 * 10 ** -3
+init_genomic_C = 3e5
+init_genomic_slope = 0.4
+
+init_cluster_num = 40
+max_iter = 20
+max_epoch = 20
+sparsity_increment = 3
 init_sparsity = 5
-init_genomic_slope = 0.2
-init_cluster_num = 12
+
+
 add_self_loops_genomic = False
 add_self_loops_euclidean = False
+bounded_sparsity = False
 gcn = False
-init_gbf = 1
-final_gbf = 0
-init_local_ce_loss_weight = 1
-final_local_ce_loss_weight = 1.5
-init_global_ce_loss_weight = 1
-final_global_ce_loss_weight = 0.5
-init_lambda = 0
-final_lambda = 4
-clusterize = False
+clusterize=False
 softmax_reconstruction = True
 diff_RQ = False
-diff_local_loss = False
+diff_local_loss = True
 diff_global_loss = False
-diff_loss_factor = 5
-graphical_report_period_epochs = 10
+diff_loss_factor = 0.95
+
+init_gbf = 0.6
+final_gbf = 0
+init_local_ce_loss_weight = 1
+final_local_ce_loss_weight = 1
+init_global_ce_loss_weight = 0
+final_global_ce_loss_weight = 0
+init_lambda = 0
+final_lambda = 0
+lambda_local = 0.5
+lambda_global = 0.5
+
+plt.rcParams["figure.figsize"] = (15, 15)
+graphical_report_period_epochs = 5
 
 link_ds, ccre_ds = load_data(datapath, genes_to_pick, chr_to_filter=[16,19])
 
