@@ -305,23 +305,20 @@ def get_primitive_gene_clusters():
 SPARSITY_LABEL: str = 'Sparsity'
 GENE_SPARSITY_LABEL: str = 'Gene_Sparsity'
 SLOPE_LABEL: str = 'GeneticSlope'
-LOCAL_DIST_LOSS: str = 'LocalDistLoss'
-FIRST_KL_TERM:str = 'First_KL_Term'
-KL:str= 'KL'
-GLOBAL_DIST_LOSS: str = 'GlobalDistLoss'
-LOCALDISTPRESERVING_LABEL: str = 'LocalDistPreservingPenalty'
-REPULSIVE_RQ_LOSS_LABEL: str = 'Repulsive_RQ_loss'
+REPULSIVE_CE_TERM: str = 'Repulsive_CE_loss'
+ATTRACTIVE_CE_TERM: str = 'Attractive_CE_loss'
+RQ_QUOTIENT_LOSS: str = 'RQ Quotient Loss'
 TOTAL_LOSS_LABEL: str = 'Total_Loss'
-LAMBDA_LABEL: str = 'Lambda'
+RQ_LOSS_WEIGHT: str = 'RQ_Loss_weight'
 GENETIC_BALANCE_FACTOR_LABEL: str = 'GeneticBalanceFactor'
 GENOMIC_C_LABEL: str = 'GenomicC'
-LOCAL_CE_LOSS_WEIGHT_LABEL: str = 'localCELossWeight'
-GLOBAL_CE_LOSS_WEIGHT_LABEL: str = 'globalCELossWeight'
+REPULSIVE_CE_LOSS_WEIGHT_LABEL: str = 'RepulsiveCELossWeight'
+ATTRACTIVE_CE_LOSS_WEIGHT_LABEL: str = 'AttractiveCELossWeight'
 GE_CC_SCORE_TAG: str = 'GeneCCScore'
 CCRE_CC_SCORE_TAG: str = 'CCRECCScore'
 HETEROGENEITY_SCORE_TAG: str = 'HeterogeneityScore'
 EMBEDDING_DIAMETER: str = 'EmbeddingDiameter'
-DISTANCE_TO_KNN_TAG: str = 'distance_to_knn'
+DISTANCE_TO_KNN_TAG: str = 'Mean Distance to knn'
 REWARD_TAG: str = 'Reward'
 UMAP_CLASS_PLOT_TAG: str = 'UMAPClassPlot'
 UMAP_CLUSTER_PLOT_TAG: str = 'UMAPClusterPlot'
@@ -431,11 +428,11 @@ class AdaGAE():
         self.current_genomic_slope = init_genomic_slope
         self.current_genomic_C = init_genomic_C
         self.current_genetic_balance_factor = init_gbf
-        self.current_lambda = init_lambda
+        self.current_rq_loss_weight = init_RQ_loss_weight
         self.current_cluster_number = init_cluster_num
         self.init_adj_matrices()
-        self.current_local_ce_loss_weight = init_local_ce_loss_weight
-        self.current_global_ce_loss_weight = init_global_ce_loss_weight
+        self.current_repulsive_loss_weight = init_repulsive_loss_weight
+        self.current_attractive_ce_loss_weight = init_attractive_loss_weight
         if not self.pre_trained: self.init_embedding()
 
     def init_adj_matrices(self):
@@ -492,34 +489,31 @@ class AdaGAE():
         # notice that recons is actually the q distribution.
         # and that raw_weigths is the p distribution. (before the symmetrization)
         '''
-        # This acts as an attractive force for the embedding learning:
-        local_dist_loss = -(self.raw_adj * torch.log(recons + 10 ** -10))
+        # This acts as a REPULSIVE force for the embedding learning:
+        repulsive_CE_term = -(self.raw_adj * torch.log(recons + 10 ** -10))
 
-        if diff_local_loss:
-            local_dist_loss[:ge_count, :ge_count] *= (lambda_local)
-            local_dist_loss[ge_count:,ge_count:] *= (1 - lambda_local)
-        local_dist_loss = local_dist_loss.sum(dim=1)
-        local_dist_loss = local_dist_loss.mean()
+        if differential_repulsive_forces:
+            repulsive_CE_term[:ge_count] *= (lambda_repulsive)
+            repulsive_CE_term[ge_count:] *= (1 - lambda_repulsive)
+        repulsive_CE_term = repulsive_CE_term.sum(dim=1)
+        repulsive_CE_term = repulsive_CE_term.mean()
 
-        tensorboard.add_scalar(LOCAL_DIST_LOSS, local_dist_loss.item(), self.global_step)
+        tensorboard.add_scalar(REPULSIVE_CE_TERM, repulsive_CE_term.item(), self.global_step)
 
 
-        # If we want to take into account for global distances, we need the Fuzzy Cross Entropy.
-        # If you dont believe it, make a limit study following the one in
+        # If we use the Fuzzy Cross Entropy. (Binary cross entropy)
+        # We could create an ATTRACTIVE force
         # https://towardsdatascience.com/how-exactly-umap-works-13e3040e1668
-        # This will act as a more repulsive-force for the embedding:
-        global_dist_loss = -(1 - self.raw_adj) * torch.log(1-recons)
+        attractive_CE_term = -(1 - self.raw_adj) * torch.log(1-recons)
 
-        if diff_global_loss:
-            # We differentiate this repulsive force based on each "modality"
-            # We give more strength to the gene-gene separation force
-            global_dist_loss[:ge_count, :ge_count] *= (lambda_global)
-            global_dist_loss[ge_count:, ge_count:] *= (1 - lambda_global)
+        if differential_attractive_forces:
+            attractive_CE_term[:ge_count] *= (lambda_attractive)
+            attractive_CE_term[ge_count:] *= (1 - lambda_attractive)
 
-        global_dist_loss = global_dist_loss.sum(dim=1)
-        global_dist_loss = global_dist_loss.mean()
+        attractive_CE_term = attractive_CE_term.sum(dim=1)
+        attractive_CE_term = attractive_CE_term.mean()
 
-        tensorboard.add_scalar(GLOBAL_DIST_LOSS, global_dist_loss.item(), self.global_step)
+        tensorboard.add_scalar(ATTRACTIVE_CE_TERM, attractive_CE_term.item(), self.global_step)
 
         # This loss acts as an attractive force for the embedding:
         # It strengthens element-wise similarities
@@ -534,18 +528,18 @@ class AdaGAE():
             ccre_rq_loss = torch.trace(
                 (self.gae_nn.embedding[ge_count:]).t().matmul(laplacian[ge_count:,ge_count:]).matmul(
                     (self.gae_nn.embedding[ge_count:]))) / size
-            rayleigh_quoeficcient_loss = (ge_rq_loss * lambda_rq) + (ccre_rq_loss * (1 - lambda_rq))
+            rayleigh_quotient_loss = (ge_rq_loss * lambda_rq) + (ccre_rq_loss * (1 - lambda_rq))
         else:
             # This is exactly equation 11 in the AdaGAE paper.
             # Notice that torch.trace return the sum of the elements in the diagonal of the input matrix.
-            rayleigh_quoeficcient_loss = torch.trace(
+            rayleigh_quotient_loss = torch.trace(
                 self.gae_nn.embedding.t().matmul(laplacian).matmul(self.gae_nn.embedding)) / size
 
-        tensorboard.add_scalar(LOCALDISTPRESERVING_LABEL, rayleigh_quoeficcient_loss.item(), self.global_step)
+        tensorboard.add_scalar(RQ_QUOTIENT_LOSS, rayleigh_quotient_loss.item(), self.global_step)
 
-        loss += self.current_local_ce_loss_weight * local_dist_loss
-        loss += self.current_global_ce_loss_weight * global_dist_loss
-        loss += self.current_lambda * rayleigh_quoeficcient_loss
+        loss += self.current_repulsive_loss_weight * repulsive_CE_term
+        loss += self.current_attractive_ce_loss_weight * attractive_CE_term
+        loss += self.current_rq_loss_weight * rayleigh_quotient_loss
 
         tensorboard.add_scalar(TOTAL_LOSS_LABEL, loss.item(), self.global_step)
 
@@ -670,8 +664,8 @@ class AdaGAE():
         self.global_step += 1
         self.iteration += 1
         action = action.detach().to('cpu').numpy()
-        self.current_lambda = action[0]
-        tensorboard.add_scalar(LAMBDA_LABEL, float(self.current_lambda), self.global_step)
+        self.current_rq_loss_weight = action[0]
+        tensorboard.add_scalar(RQ_LOSS_WEIGHT, float(self.current_rq_loss_weight), self.global_step)
         self.current_sparsity = int(action[1])
         self.current_gene_sparsity = math.ceil(self.current_sparsity / self.global_ccres_over_genes_ratio)
         tensorboard.add_scalar(SPARSITY_LABEL, self.current_sparsity, self.global_step)
@@ -682,10 +676,10 @@ class AdaGAE():
         tensorboard.add_scalar(GENETIC_BALANCE_FACTOR_LABEL, float(self.current_genetic_balance_factor),self.global_step)
         self.current_genomic_C = action[4]
         tensorboard.add_scalar(GENOMIC_C_LABEL, self.current_genomic_C, self.global_step)
-        self.current_local_ce_loss_weight = action[5]
-        tensorboard.add_scalar(LOCAL_CE_LOSS_WEIGHT_LABEL, self.current_local_ce_loss_weight,self.global_step)
-        self.current_global_ce_loss_weight = action[6]
-        tensorboard.add_scalar(GLOBAL_CE_LOSS_WEIGHT_LABEL, self.current_global_ce_loss_weight,self.global_step)
+        self.current_repulsive_loss_weight = action[5]
+        tensorboard.add_scalar(REPULSIVE_CE_LOSS_WEIGHT_LABEL, self.current_repulsive_loss_weight, self.global_step)
+        self.current_attractive_ce_loss_weight = action[6]
+        tensorboard.add_scalar(ATTRACTIVE_CE_LOSS_WEIGHT_LABEL, self.current_attractive_ce_loss_weight, self.global_step)
 
         self.gae_nn.optimizer.zero_grad()
 
@@ -717,7 +711,7 @@ class AdaGAE():
             tensorboard.add_scalar(DISTANCE_SCORE_TAG, distance_score, self.global_step)
 
         # reward = 1/(loss.item()+1) + ge_ch_score/1 + ccre_ch_score/300
-
+        '''
         scaled_ge_cc_score = gene_cc_score / 100
         scaled_ccre_cc_score = ccre_cc_score / 400
         scaled_heterogeneity = heterogeneity_score / 20
@@ -730,8 +724,8 @@ class AdaGAE():
                  (0.25 * distance_score)
 
         tensorboard.add_scalar(REWARD_TAG, reward, self.global_step)
-
-        return reward, loss, done_flag
+        '''
+        return 0, loss, done_flag
 
     @profile(output_file='profiling_adagae')
     def dummy_run(self):
@@ -742,22 +736,22 @@ class AdaGAE():
             if epoch % 10 == 0:
                 save(epoch)
             for i in range(max_iter):
-                dummy_action = torch.Tensor([self.current_lambda,
+                dummy_action = torch.Tensor([self.current_rq_loss_weight,
                                              self.current_sparsity,
                                              self.current_genomic_slope,
                                              self.current_genetic_balance_factor,
                                              self.current_genomic_C,
-                                             self.current_local_ce_loss_weight,
-                                             self.current_global_ce_loss_weight]).to(self.device)
+                                             self.current_repulsive_loss_weight,
+                                             self.current_attractive_ce_loss_weight]).to(self.device)
 
                 reward, loss, done_flag = self.step(dummy_action)
                 self.epoch_losses.append(loss.item())
 
             self.current_sparsity += sparsity_increment
             self.current_genetic_balance_factor = self.get_dinamic_param(init_gbf, final_gbf)
-            self.current_lambda = self.get_dinamic_param(init_lambda, final_lambda)
-            self.current_local_ce_loss_weight = self.get_dinamic_param(init_local_ce_loss_weight, final_local_ce_loss_weight)
-            self.current_global_ce_loss_weight = self.get_dinamic_param(init_global_ce_loss_weight, final_global_ce_loss_weight)
+            self.current_rq_loss_weight = self.get_dinamic_param(init_RQ_loss_weight, final_RQ_loss_weight)
+            self.current_repulsive_loss_weight = self.get_dinamic_param(init_repulsive_loss_weight, final_repulsive_loss_weight)
+            self.current_attractive_ce_loss_weight = self.get_dinamic_param(init_attractive_loss_weight, final_attractive_loss_weight)
 
             self.update_graph()
 
@@ -1025,21 +1019,28 @@ bounded_sparsity = False
 gcn = False
 clusterize=False
 softmax_reconstruction = True
-diff_RQ = True
-diff_local_loss = True
-diff_global_loss = True
-lambda_rq = 0.95
+
+
 
 init_gbf = 0.6
 final_gbf = 0
-init_local_ce_loss_weight = 1
-final_local_ce_loss_weight = 1
-init_global_ce_loss_weight = 0
-final_global_ce_loss_weight = 0
-init_lambda = 0
-final_lambda = 0
-lambda_local = 0.5
-lambda_global = 0.5
+init_repulsive_loss_weight = 1
+final_repulsive_loss_weight = 1
+init_attractive_loss_weight = 0
+final_attractive_loss_weight = 0
+init_RQ_loss_weight = 0
+final_RQ_loss_weight = 0
+
+
+differential_attractive_forces = True
+lambda_attractive = 0.5
+
+differential_repulsive_forces = True
+lambda_repulsive = 0.5
+
+diff_RQ = True
+lambda_rq = 0.95
+
 
 plt.rcParams["figure.figsize"] = (15, 15)
 graphical_report_period_epochs = 5
