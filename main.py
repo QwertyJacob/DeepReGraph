@@ -524,10 +524,10 @@ class AdaGAE():
             # We should differentiate this attractive force based on each "modality"
             ge_rq_loss = torch.trace(
                 (self.gae_nn.embedding[:ge_count]).t().matmul(laplacian[:ge_count, :ge_count]).matmul(
-                    (self.gae_nn.embedding[:ge_count]))) / size
+                    (self.gae_nn.embedding[:ge_count]))) / ge_count
             ccre_rq_loss = torch.trace(
                 (self.gae_nn.embedding[ge_count:]).t().matmul(laplacian[ge_count:,ge_count:]).matmul(
-                    (self.gae_nn.embedding[ge_count:]))) / size
+                    (self.gae_nn.embedding[ge_count:]))) / ccre_count
             rayleigh_quotient_loss = (ge_rq_loss * lambda_rq) + (ccre_rq_loss * (1 - lambda_rq))
         else:
             # This is exactly equation 11 in the AdaGAE paper.
