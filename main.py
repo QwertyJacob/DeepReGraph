@@ -326,7 +326,9 @@ CLUSTER_NUMBER_LABEL: str = 'ClusterNumber'
 GENE_CLUSTERING_COMPLETENESS_TAG: str = 'GeneClusteringCompleteness'
 CCRE_CLUSTERING_COMPLETENESS_TAG: str = 'CCREClusteringCompleteness'
 DISTANCE_SCORE_TAG: str = 'DistanceScore'
-
+LAMBDA_REPULSIVE_LABEL:str = 'Lambda Repulsive'
+LAMBDA_ATTRACTIVE_LABEL:str= 'Lambda Attractive'
+LAMBDA_RQ_LABEL:str= 'Lambda RQ'
 
 class AdaGAE_NN(torch.nn.Module):
 
@@ -433,6 +435,9 @@ class AdaGAE():
         self.init_adj_matrices()
         self.current_repulsive_loss_weight = init_repulsive_loss_weight
         self.current_attractive_ce_loss_weight = init_attractive_loss_weight
+        self.current_lambda_attractive = init_lambda_attractive
+        self.current_lambda_repulsive = init_lambda_repulsive
+        self.current_lambda_rq = init_lambda_rq
         if not self.pre_trained: self.init_embedding()
 
     def init_adj_matrices(self):
@@ -493,8 +498,8 @@ class AdaGAE():
         repulsive_CE_term = -(self.raw_adj * torch.log(recons + 10 ** -10))
 
         if differential_repulsive_forces:
-            repulsive_CE_term[:ge_count] *= (lambda_repulsive)
-            repulsive_CE_term[ge_count:] *= (1 - lambda_repulsive)
+            repulsive_CE_term[:ge_count] *= self.current_lambda_repulsive
+            repulsive_CE_term[ge_count:] *= (1 - self.current_lambda_repulsive)
         repulsive_CE_term = repulsive_CE_term.sum(dim=1)
         repulsive_CE_term = repulsive_CE_term.mean()
 
@@ -507,8 +512,8 @@ class AdaGAE():
         attractive_CE_term = -(1 - self.raw_adj) * torch.log(1-recons)
 
         if differential_attractive_forces:
-            attractive_CE_term[:ge_count] *= (lambda_attractive)
-            attractive_CE_term[ge_count:] *= (1 - lambda_attractive)
+            attractive_CE_term[:ge_count] *= self.current_lambda_attractive
+            attractive_CE_term[ge_count:] *= (1 - self.current_lambda_attractive)
 
         attractive_CE_term = attractive_CE_term.sum(dim=1)
         attractive_CE_term = attractive_CE_term.mean()
@@ -528,7 +533,7 @@ class AdaGAE():
             ccre_rq_loss = torch.trace(
                 (self.gae_nn.embedding[ge_count:]).t().matmul(laplacian[ge_count:,ge_count:]).matmul(
                     (self.gae_nn.embedding[ge_count:]))) / ccre_count
-            rayleigh_quotient_loss = (ge_rq_loss * lambda_rq) + (ccre_rq_loss * (1 - lambda_rq))
+            rayleigh_quotient_loss = (ge_rq_loss * self.current_lambda_rq) + (ccre_rq_loss * (1 - self.current_lambda_rq))
         else:
             # This is exactly equation 11 in the AdaGAE paper.
             # Notice that torch.trace return the sum of the elements in the diagonal of the input matrix.
@@ -680,6 +685,14 @@ class AdaGAE():
         tensorboard.add_scalar(REPULSIVE_CE_LOSS_WEIGHT_LABEL, self.current_repulsive_loss_weight, self.global_step)
         self.current_attractive_ce_loss_weight = action[6]
         tensorboard.add_scalar(ATTRACTIVE_CE_LOSS_WEIGHT_LABEL, self.current_attractive_ce_loss_weight, self.global_step)
+        self.current_lambda_repulsive = action[7]
+        tensorboard.add_scalar(LAMBDA_REPULSIVE_LABEL, self.current_lambda_repulsive, self.global_step)
+        self.current_lambda_attractive = action[8]
+        tensorboard.add_scalar(LAMBDA_ATTRACTIVE_LABEL, self.current_lambda_attractive, self.global_step)
+        self.current_lambda_rq = action[9]
+        tensorboard.add_scalar(LAMBDA_RQ_LABEL, self.current_lambda_rq, self.global_step)
+
+
 
         self.gae_nn.optimizer.zero_grad()
 
@@ -742,7 +755,10 @@ class AdaGAE():
                                              self.current_genetic_balance_factor,
                                              self.current_genomic_C,
                                              self.current_repulsive_loss_weight,
-                                             self.current_attractive_ce_loss_weight]).to(self.device)
+                                             self.current_attractive_ce_loss_weight,
+                                             self.current_lambda_repulsive,
+                                             self.current_lambda_attractive,
+                                             self.current_lambda_rq]).to(self.device)
 
                 reward, loss, done_flag = self.step(dummy_action)
                 self.epoch_losses.append(loss.item())
@@ -752,6 +768,9 @@ class AdaGAE():
             self.current_rq_loss_weight = self.get_dinamic_param(init_RQ_loss_weight, final_RQ_loss_weight)
             self.current_repulsive_loss_weight = self.get_dinamic_param(init_repulsive_loss_weight, final_repulsive_loss_weight)
             self.current_attractive_ce_loss_weight = self.get_dinamic_param(init_attractive_loss_weight, final_attractive_loss_weight)
+            self.current_lambda_repulsive = self.get_dinamic_param(init_lambda_repulsive, final_lambda_repulsive)
+            self.current_lambda_attractive = self.get_dinamic_param(init_lambda_attractive, final_lambda_attractive)
+            self.current_lambda_rq = self.get_dinamic_param(init_lambda_rq, final_lambda_rq)
 
             self.update_graph()
 
@@ -1033,14 +1052,16 @@ final_RQ_loss_weight = 0
 
 
 differential_attractive_forces = True
-lambda_attractive = 0.5
+init_lambda_attractive = 0.5
+final_lambda_attractive = 0.5
 
 differential_repulsive_forces = True
-lambda_repulsive = 0.5
+init_lambda_repulsive = 0.5
+final_lambda_repulsive = 0.5
 
 diff_RQ = True
-lambda_rq = 0.95
-
+init_lambda_rq = 0.95
+final_lambda_rq = 0.95
 
 plt.rcParams["figure.figsize"] = (15, 15)
 graphical_report_period_epochs = 5
