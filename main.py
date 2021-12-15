@@ -1059,12 +1059,18 @@ differential_repulsive_forces = True
 init_lambda_repulsive = 0.5
 final_lambda_repulsive = 0.5
 
-diff_RQ = True
-init_lambda_rq = 0.95
-final_lambda_rq = 0.95
+diff_RQ = False
+init_lambda_rq = 0.5
+final_lambda_rq = 0.5
 
-plt.rcParams["figure.figsize"] = (15, 15)
-graphical_report_period_epochs = 5
+plt.rcParams["figure.figsize"] = (12, 12)
+graphical_report_period_epochs = 6
+
+
+
+
+################
+##############
 
 link_ds, ccre_ds = load_data(datapath, genes_to_pick, chr_to_filter=[16,19])
 
