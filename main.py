@@ -709,13 +709,11 @@ class AdaGAE():
         gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = 0, 0, 0, 0, 0, 0
 
 
-        if self.iteration % (graphical_report_period_epochs * max_iter) == 0:
-            #visual_clustering = False
-            #if self.iteration % (2 * max_iter) == 0:
-            #    visual_clustering = True
-            visual_clustering = True
-            gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = self.clustering(
-                visual_clustering)
+        if self.iteration % max_iter == 0:
+            visual_clustering = False
+            if self.iteration % (graphical_report_period_epochs * max_iter) == 0:
+                visual_clustering = True
+            gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = self.clustering(visual_clustering)
             tensorboard.add_scalar(GE_CC_SCORE_TAG, gene_cc_score, self.global_step)
             tensorboard.add_scalar(CCRE_CC_SCORE_TAG, ccre_cc_score, self.global_step)
             tensorboard.add_scalar(HETEROGENEITY_SCORE_TAG, heterogeneity_score, self.global_step)
@@ -743,10 +741,9 @@ class AdaGAE():
     @profile(output_file='profiling_adagae')
     def dummy_run(self):
 
-        self.gae_nn.to(self.device)
         for epoch in tqdm(range(max_epoch)):
             self.epoch_losses = []
-            if epoch % 10 == 0:
+            if epoch % 5 == 0:
                 save(epoch)
             for i in range(max_iter):
                 dummy_action = torch.Tensor([self.current_rq_loss_weight,
@@ -792,7 +789,7 @@ class AdaGAE():
         size = transposed_data_matrix.shape[1]
 
         distances = distance(transposed_data_matrix, transposed_data_matrix)
-        tensorboard.add_scalar(EMBEDDING_DIAMETER, distances.median()*(1e5), self.global_step)
+        if not eval: tensorboard.add_scalar(EMBEDDING_DIAMETER, distances.median()*(1e5), self.global_step)
         distances = torch.max(distances, torch.t(distances))
         sorted_distances, _ = distances.sort(dim=1)
 
@@ -1041,8 +1038,8 @@ softmax_reconstruction = True
 
 
 
-init_gbf = 0.6
-final_gbf = 0
+init_gbf = 0.5
+final_gbf = 1
 init_repulsive_loss_weight = 1
 final_repulsive_loss_weight = 1
 init_attractive_loss_weight = 0
