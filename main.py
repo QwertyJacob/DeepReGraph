@@ -255,7 +255,11 @@ def load_data(datapath, num_of_genes=0, tight=True, chr_to_filter=None):
     working_genes_ds[['Heart_E10_5', 'Heart_E11_5', 'Heart_E12_5',
                       'Heart_E13_5', 'Heart_E14_5', 'Heart_E15_5', 'Heart_E16_5', 'Heart_P0']] = X
 
-    ccre_ds = pd.read_csv(datapath + 'cCRE_variational_mean_reduced.csv')
+    if tight:
+      ccre_ds = pd.read_csv(datapath + 'tight_cCRE_variational_mean_reduced.csv')
+    else:
+      ccre_ds = pd.read_csv(datapath + 'cCRE_variational_mean_reduced.csv')
+
     if chr_to_filter != None:
         filtered_ccre_ds = pd.DataFrame()
         for chr_number in chr_to_filter:
@@ -709,7 +713,7 @@ class AdaGAE():
         gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = 0, 0, 0, 0, 0, 0
 
 
-        if (self.current_cluster_number < 50) and (self.iteration % max_iter == 0):
+        if clusterize and (self.current_cluster_number < 50) and (self.iteration % max_iter == 0):
 
             gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = self.clustering()
             tensorboard.add_scalar(GE_CC_SCORE_TAG, gene_cc_score, self.global_step)
@@ -979,6 +983,168 @@ def save(epoch):
 ###########
 ## HYPER-PARAMS
 ###########
+
+
+plt.rcParams["figure.figsize"] = (12, 12)
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+genes_to_pick = 0
+add_self_loops_genomic = False
+add_self_loops_euclidean = False
+
+## Data preprocessing:
+
+link_ds, ccre_ds = load_data(datapath, genes_to_pick)
+
+X, ge_count, ccre_count = get_hybrid_feature_matrix(link_ds, ccre_ds)
+
+links = get_genomic_distance_matrix(link_ds)
+
+ge_class_labels = ['genes_' + str(ge_cluster_label) for ge_cluster_label in get_primitive_gene_clusters()]
+print('Analyzing ', ge_count, ' genes and ', ccre_count, ' ccres for a total of ', ge_count + ccre_count, ' elements.')
+
+X /= torch.max(X)
+X = torch.Tensor(X).to(device)
+input_dim = X.shape[1]
+layers = [input_dim, 24, 12]
+
+###
+###
+
+
+eval=False
+pre_trained = False
+gcn = False
+clusterize=False
+softmax_reconstruction = True
+differential_attractive_forces = True
+differential_repulsive_forces = True
+learning_rate = 5 * 10 ** -3
+init_genomic_C = 3e5
+init_genomic_slope = 0.4
+
+init_sparsity = 10
+init_gbf = 0
+
+
+init_repulsive_loss_weight = 1
+init_attractive_loss_weight = 0
+init_RQ_loss_weight = 1
+init_lambda_attractive = 0.5
+init_lambda_repulsive = 0.5
+
+
+
+if __name__ == '__main__':
+
+    ###
+    ###
+    modelname = '/updownspars_TRIS'
+    tensorboard = SummaryWriter(LOG_DIR + modelname)
+
+    ###
+    ###
+    plt.rcParams["figure.figsize"] = (12, 12)
+    graphical_report_period_epochs = 6
+
+    ###
+    ###
+    gae = AdaGAE(X,
+                 device=device,
+                 pre_trained=False)
+
+    epoch = 0
+
+    ###
+    ###
+
+    current_rq_loss_weight = 1
+    current_sparsity = 260
+    current_genetic_balance_factor = 0
+    current_repulsive_loss_weight = 1
+    current_attractive_ce_loss_weight = 0
+    current_lambda_repulsive = 0.5
+    current_lambda_attractive = 0.5
+
+    sparsity_increment = 10
+
+    max_epochs = 15
+    max_iter = 20
+
+    ###
+    ###
+
+
+    for epochsita in range(max_epochs):
+        epoch += 1
+        current_sparsity += sparsity_increment
+        gae.epoch_losses = []
+
+        for i in range(max_iter):
+            dummy_action = torch.Tensor([current_rq_loss_weight,
+                                         current_sparsity,
+                                         current_genetic_balance_factor,
+                                         current_repulsive_loss_weight,
+                                         current_attractive_ce_loss_weight,
+                                         current_lambda_repulsive,
+                                         current_lambda_attractive]).to(device)
+
+            reward, loss, done_flag = gae.step(dummy_action)
+            print(loss.item())
+            gae.epoch_losses.append(loss.item())
+
+        mean_loss = sum(gae.epoch_losses) / len(gae.epoch_losses)
+        print('epoch:%3d,' % epoch, 'loss: %6.5f' % mean_loss)
+
+    print('gae.current_cluster_number', gae.current_cluster_number)
+
+    ##
+
+    cpu_embedding = gae.gae_nn.embedding.detach().cpu().numpy()
+
+    umap_embedding = umap.UMAP(
+        n_neighbors=30,
+        min_dist=0
+    ).fit_transform(cpu_embedding)
+
+
+
+    ##
+
+    class_labels = np.array(ge_class_labels + ['ccres'] * ccre_count)
+    classes = np.unique(class_labels)
+
+    classplot_alphas = [0.1, 1, 1, 1, 1]
+    classplot_markers = ["o", "^", "v", "v", "^"]
+    classplot_colors = ['aquamarine', 'r', 'g', 'g', 'r']
+    classplot_sizes = [10, 40, 40, 40, 40]
+    for idx, elem_class in enumerate(classes):
+        cluster_points = _safe_indexing(umap_embedding, class_labels == elem_class)
+        cluster_marker = classplot_markers[idx % len(markers)]
+        cluster_color = classplot_colors[idx % len(colors)]
+        cluster_marker_size = classplot_sizes[idx % len(sizes)]
+        plt.scatter(cluster_points[:, 0],
+                    cluster_points[:, 1],
+                    marker=cluster_marker,
+                    color=cluster_color,
+                    label=elem_class,
+                    alpha=classplot_alphas[idx],
+                    s=cluster_marker_size)
+
+    plt.legend()
+    # gae.send_image_to_tensorboard(plt, UMAP_CLASS_PLOT_TAG)
+    plt.show()
+
+
+
+'''
+###
+###DUMMY RUN
+###
+
+###########
+## HYPER-PARAMS
+###########
 eval=False
 pre_trained = False
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -998,6 +1164,7 @@ add_self_loops_genomic = False
 add_self_loops_euclidean = False
 bounded_sparsity = False
 gcn = False
+clusterize=False
 softmax_reconstruction = True
 
 
@@ -1020,6 +1187,9 @@ differential_repulsive_forces = True
 init_lambda_repulsive = 0.5
 final_lambda_repulsive = 0.5
 
+diff_RQ = False
+init_lambda_rq = 0.5
+final_lambda_rq = 0.5
 
 plt.rcParams["figure.figsize"] = (12, 12)
 graphical_report_period_epochs = 6
@@ -1062,3 +1232,5 @@ if __name__ == '__main__':
                  pre_computed_embedding='models\\gC_3e5_gS0.4\\gC_3e5_gS0.4_embedding_140_epochs')
 
     gae.dummy_run()
+
+'''
