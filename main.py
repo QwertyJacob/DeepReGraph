@@ -255,10 +255,13 @@ def load_data(datapath, num_of_genes=0, tight=True, chr_to_filter=None):
     working_genes_ds[['Heart_E10_5', 'Heart_E11_5', 'Heart_E12_5',
                       'Heart_E13_5', 'Heart_E14_5', 'Heart_E15_5', 'Heart_E16_5', 'Heart_P0']] = X
 
-    if tight:
-      ccre_ds = pd.read_csv(datapath + 'tight_cCRE_variational_mean_reduced.csv')
-    else:
-      ccre_ds = pd.read_csv(datapath + 'cCRE_variational_mean_reduced.csv')
+    # if tight:
+    #   ccre_ds = pd.read_csv(datapath + 'tight_cCRE_variational_mean_reduced.csv')
+    # else:
+    #   ccre_ds = pd.read_csv(datapath + 'cCRE_variational_mean_reduced.csv')
+
+    ccre_ds = pd.read_csv(datapath + 'cCRE_variational_mean_reduced.csv')
+
 
     if chr_to_filter != None:
         filtered_ccre_ds = pd.DataFrame()
@@ -471,9 +474,6 @@ class AdaGAE():
             _ = None
             torch.cuda.empty_cache()
 
-    def cal_max_neighbors(self):
-        size = self.X.shape[0]
-        return 2.0 * size / init_cluster_num
 
     def update_graph(self):
         self.adj, self.raw_adj = self.cal_weights_via_CAN(self.gae_nn.embedding.t())
@@ -493,16 +493,20 @@ class AdaGAE():
 
         size = self.X.shape[0]
         loss = 0
+
         '''
         # notice that recons is actually the q distribution.
-        # and that raw_weigths is the p distribution. (before the symmetrization)
+        # and that raw_adj is the p distribution. (before the symmetrization)
         '''
+        assert not np.isnan(self.raw_adj.detach().cpu().sum())
+        assert not np.isnan(torch.log(recons + 10 ** -10).detach().cpu().sum())
         # This acts as a REPULSIVE force for the embedding learning:
         repulsive_CE_term = -(self.raw_adj * torch.log(recons + 10 ** -10))
 
         if differential_repulsive_forces:
             repulsive_CE_term[:ge_count] *= self.current_lambda_repulsive
             repulsive_CE_term[ge_count:] *= (1 - self.current_lambda_repulsive)
+
         repulsive_CE_term = repulsive_CE_term.sum(dim=1)
         repulsive_CE_term = repulsive_CE_term.mean()
 
@@ -521,6 +525,8 @@ class AdaGAE():
         attractive_CE_term = attractive_CE_term.sum(dim=1)
         attractive_CE_term = attractive_CE_term.mean()
 
+        assert not np.isnan(attractive_CE_term.item())
+
         tensorboard.add_scalar(ATTRACTIVE_CE_TERM, attractive_CE_term.item(), self.global_step)
 
         # This loss acts as an attractive force for the embedding:
@@ -534,10 +540,12 @@ class AdaGAE():
         rayleigh_quotient_loss = torch.trace(
             self.gae_nn.embedding.t().matmul(laplacian).matmul(self.gae_nn.embedding)) / size
 
+        assert not np.isnan(rayleigh_quotient_loss.item())
+
         tensorboard.add_scalar(RQ_QUOTIENT_LOSS, rayleigh_quotient_loss.item(), self.global_step)
 
         loss += self.current_repulsive_loss_weight * repulsive_CE_term
-        loss += self.current_attractive_ce_loss_weight * attractive_CE_term
+        #loss += self.current_attractive_ce_loss_weight * attractive_CE_term
         loss += self.current_rq_loss_weight * rayleigh_quotient_loss
 
         tensorboard.add_scalar(TOTAL_LOSS_LABEL, loss.item(), self.global_step)
@@ -788,7 +796,7 @@ class AdaGAE():
         # distance to the k-th nearest neighbor ONLY GENES:
         top_k_genes = sorted_distances[:ge_count, self.current_gene_sparsity]
         top_k_genes = torch.t(top_k_genes.repeat(size, 1)) + 10 ** -10
-        tensorboard.add_scalar(DISTANCE_TO_KNN_TAG, top_k_genes.median() * (1e5), self.global_step)
+        tensorboard.add_scalar(DISTANCE_TO_KNN_TAG, top_k_genes.median(), self.global_step)
         # summatory of the nearest k distances ONLY GENES:
         sum_top_k_genes = torch.sum(sorted_distances[:ge_count, 0:self.current_gene_sparsity], dim=1)
         sum_top_k_genes = torch.t(sum_top_k_genes.repeat(size, 1))
@@ -868,8 +876,6 @@ class AdaGAE():
         scaled_link_scores = scaled_link_scores.t()
 
 
-
-
         weights = (weights * (1 - self.current_genetic_balance_factor)) +  (scaled_link_scores * self.current_genetic_balance_factor)
 
 
@@ -877,16 +883,24 @@ class AdaGAE():
             # self-loop avoidance (changed to basic GNN model as in hamilton's book)
             weights.fill_diagonal_(0)
 
+
+        if 0 in weights.sum(dim=1):
+          print('K-sparse solution produced a cluster of 1 element. Will now halt')
         # row-wise normalization.
         weights /= weights.sum(dim=1).reshape([size, 1])
 
+
         torch.cuda.empty_cache()
         # UN-symmetric connectivity distribution
-        raw_weights = weights
+        raw_weights = weights.clone()
         # Symmetrization of the connectivity distribution
+
+
         weights = (weights + weights.t()) / 2
         raw_weights = raw_weights.to(device)
         weights = weights.to(device)
+
+
         return weights, raw_weights
 
     def clustering(self):
@@ -988,7 +1002,7 @@ def save(epoch):
 plt.rcParams["figure.figsize"] = (12, 12)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-genes_to_pick = 0
+genes_to_pick = 200
 add_self_loops_genomic = False
 add_self_loops_euclidean = False
 
@@ -1027,7 +1041,7 @@ init_sparsity = 10
 init_gbf = 0
 
 
-init_repulsive_loss_weight = 1
+init_repulsive_loss_weight = 0
 init_attractive_loss_weight = 0
 init_RQ_loss_weight = 1
 init_lambda_attractive = 0.5
@@ -1059,9 +1073,9 @@ if __name__ == '__main__':
     ###
 
     current_rq_loss_weight = 1
-    current_sparsity = 260
+    current_sparsity = 10
     current_genetic_balance_factor = 0
-    current_repulsive_loss_weight = 1
+    current_repulsive_loss_weight = 0.1
     current_attractive_ce_loss_weight = 0
     current_lambda_repulsive = 0.5
     current_lambda_attractive = 0.5
@@ -1142,32 +1156,10 @@ if __name__ == '__main__':
 ###DUMMY RUN
 ###
 
-###########
-## HYPER-PARAMS
-###########
-eval=False
-pre_trained = False
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-genes_to_pick = 0
-learning_rate = 5 * 10 ** -3
-init_genomic_C = 3e5
-init_genomic_slope = 0.4
 
-init_cluster_num = 40
+
 max_iter = 20
 max_epoch = 20
-sparsity_increment = 3
-init_sparsity = 5
-
-
-add_self_loops_genomic = False
-add_self_loops_euclidean = False
-bounded_sparsity = False
-gcn = False
-clusterize=False
-softmax_reconstruction = True
-
-
 
 init_gbf = 0.5
 final_gbf = 1
@@ -1178,7 +1170,6 @@ final_attractive_loss_weight = 0
 init_RQ_loss_weight = 0
 final_RQ_loss_weight = 0
 
-
 differential_attractive_forces = True
 init_lambda_attractive = 0.5
 final_lambda_attractive = 0.5
@@ -1187,50 +1178,23 @@ differential_repulsive_forces = True
 init_lambda_repulsive = 0.5
 final_lambda_repulsive = 0.5
 
-diff_RQ = False
-init_lambda_rq = 0.5
-final_lambda_rq = 0.5
-
-plt.rcParams["figure.figsize"] = (12, 12)
-graphical_report_period_epochs = 6
-
-
 
 
 ################
 ##############
 
-link_ds, ccre_ds = load_data(datapath, genes_to_pick, chr_to_filter=[16,19])
-
-X, ge_count, ccre_count = get_hybrid_feature_matrix(link_ds, ccre_ds)
-
-links = get_genomic_distance_matrix(link_ds)
-
-ge_class_labels = ['genes_'+str(ge_cluster_label) for ge_cluster_label in get_primitive_gene_clusters()]
-
-print('Analyzing ',ge_count, ' genes and ',ccre_count, ' ccres for a total of ', ge_count + ccre_count, ' elements.')
 
 
+modelname = '/non_diff_RQ'
 
-# POSITIVE_X
-# X += torch.abs(torch.min(X))
+tensorboard = SummaryWriter(LOG_DIR + modelname)
 
-X /= torch.max(X)
-X = torch.Tensor(X).to(device)
-input_dim = X.shape[1]
-layers = [input_dim, 24, 12]
+gae = AdaGAE(X,
+             device=device,
+             pre_trained=pre_trained,
+             pre_trained_state_dict='models\\gC_3e5_gS0.4\\gC_3e5_gS0.4_model_140_epochs',
+             pre_computed_embedding='models\\gC_3e5_gS0.4\\gC_3e5_gS0.4_embedding_140_epochs')
 
-if __name__ == '__main__':
-    modelname = '/non_diff_RQ'
-
-    tensorboard = SummaryWriter(LOG_DIR + modelname)
-
-    gae = AdaGAE(X,
-                 device=device,
-                 pre_trained=pre_trained,
-                 pre_trained_state_dict='models\\gC_3e5_gS0.4\\gC_3e5_gS0.4_model_140_epochs',
-                 pre_computed_embedding='models\\gC_3e5_gS0.4\\gC_3e5_gS0.4_embedding_140_epochs')
-
-    gae.dummy_run()
+gae.dummy_run()
 
 '''
