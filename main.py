@@ -226,7 +226,7 @@ def get_kendall_matrix():
 
     print('kendall matrix computed...')
 
-    return kendall_matrix
+    return kendall_matrix.to(device)
 
 def distance(X, Y, square=True):
     """
@@ -1105,6 +1105,8 @@ links = get_genomic_distance_matrix(link_ds)
 ge_class_labels = ['genes_' + str(ge_cluster_label) for ge_cluster_label in get_primitive_gene_clusters()]
 print('Analyzing ', ge_count, ' genes and ', ccre_count, ' ccres for a total of ', ge_count + ccre_count, ' elements.')
 
+kendall_matrix = get_kendall_matrix()
+
 X /= torch.max(X)
 X = torch.Tensor(X).to(device)
 input_dim = X.shape[1]
@@ -1170,14 +1172,14 @@ if __name__ == '__main__':
 
     sparsity_increment = 10
 
-    max_epochs = 15
+    max_epoch = 15
     max_iter = 20
 
     ###
     ###
 
 
-    for epochsita in range(max_epochs):
+    for epochsita in range(max_epoch):
         epoch += 1
         current_sparsity += sparsity_increment
         gae.epoch_losses = []
