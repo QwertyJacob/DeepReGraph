@@ -50,9 +50,11 @@ import math
 import PIL.Image
 from torchvision.transforms import ToTensor
 import hdbscan
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, MinMaxScaler
 from sklearn.cluster import KMeans
 from sklearn.utils import _safe_indexing
+from sklearn import linear_model
+
 
 import umap
 import umap.plot
