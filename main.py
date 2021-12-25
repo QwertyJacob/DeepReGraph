@@ -140,6 +140,92 @@ def get_hybrid_feature_matrix(link_ds, ccre_ds):
     return torch.Tensor(np.concatenate((ge_values_new, ccre_activity_new))).cpu(), ge_count, ccre_count
 
 
+def get_kendall_matrix():
+
+    numpy_X = X.cpu().numpy()
+
+    time_steps = np.array([0,1,2,3,4,5,6,7])
+    gene_exp = numpy_X[:ge_count,0:8]
+    met = numpy_X[ge_count:,8:16]
+    acet = numpy_X[ge_count:,16:24]
+    atac = numpy_X[ge_count:,24:32]
+
+    gene_scaler = MinMaxScaler()
+    met_scaler = MinMaxScaler()
+    acet_scaler = MinMaxScaler()
+    atac_scaler = MinMaxScaler()
+
+    scaled_gene_exp = gene_scaler.fit_transform(gene_exp)
+    scaled_met = met_scaler.fit_transform(met)
+    scaled_acet = acet_scaler.fit_transform(acet)
+    scaled_atac = atac_scaler.fit_transform(atac)
+
+    print('computing kendall matrix...')
+
+    gene_exp_slopes = []
+    reg = linear_model.LinearRegression()
+    for gene_exp_row in tqdm(scaled_gene_exp):
+
+      reg.fit(time_steps.reshape(-1,1),gene_exp_row)
+      Y_pred = reg.predict(time_steps.reshape(-1,1))
+      gene_exp_slopes.append(reg.coef_[0])
+      # plt.scatter(time_steps.reshape(-1,1),gene_exp_row)
+      # plt.plot(time_steps.reshape(-1,1), Y_pred, color='red')
+      # plt.show()
+
+    met_slopes = []
+    reg = linear_model.LinearRegression()
+    for met_row in tqdm(scaled_met):
+
+      reg.fit(time_steps.reshape(-1,1),met_row)
+      Y_pred = reg.predict(time_steps.reshape(-1,1))
+      met_slopes.append(reg.coef_[0])
+      # plt.scatter(time_steps.reshape(-1,1),met_row)
+      # plt.plot(time_steps.reshape(-1,1), Y_pred, color='red')
+      # plt.show()
+
+    acet_slopes = []
+    reg = linear_model.LinearRegression()
+    for acet_row in tqdm(scaled_acet):
+
+      reg.fit(time_steps.reshape(-1,1),acet_row)
+      Y_pred = reg.predict(time_steps.reshape(-1,1))
+      acet_slopes.append(reg.coef_[0])
+      # plt.scatter(time_steps.reshape(-1,1),acet_row)
+      # plt.plot(time_steps.reshape(-1,1), Y_pred, color='red')
+      # plt.show()
+
+    atac_slopes = []
+    reg = linear_model.LinearRegression()
+    for atac_row in tqdm(scaled_atac):
+
+      reg.fit(time_steps.reshape(-1,1),atac_row)
+      Y_pred = reg.predict(time_steps.reshape(-1,1))
+      atac_slopes.append(reg.coef_[0])
+      # plt.scatter(time_steps.reshape(-1,1),atac_row)
+      # plt.plot(time_steps.reshape(-1,1), Y_pred, color='red')
+      # plt.show()
+
+
+    dim = ge_count + ccre_count
+    kendall_matrix = torch.zeros(dim,dim)
+    gene_slopes = np.array(gene_exp_slopes)
+    ccre_slopes = (np.array(atac_slopes) + np.array(acet_slopes) - np.array(met_slopes))/3
+
+    ccre_trend_upright_submatrix = np.repeat(ccre_slopes.reshape(-1,1), ge_count).reshape(ccre_count,-1).transpose()
+    gene_trend_upright_submatrix = np.repeat(gene_slopes.reshape(1,-1), ccre_count).reshape(ge_count,-1)
+    kendall_matrix[:ge_count,ge_count:] = torch.Tensor(gene_trend_upright_submatrix + ccre_trend_upright_submatrix)
+
+    gene_trend_downleft_submatrix = np.repeat(gene_slopes.reshape(-1,1), ccre_count).reshape(-1,ccre_count).transpose()
+    ccre_trend_downleft_submatrix = np.repeat(ccre_slopes.reshape(1,-1), ge_count).reshape(ccre_count,-1)
+    kendall_matrix[ge_count:,:ge_count] = torch.Tensor(gene_trend_downleft_submatrix + ccre_trend_downleft_submatrix)
+    kendall_matrix.abs_()
+    kendall_matrix /= kendall_matrix.max()
+
+    print('kendall matrix computed...')
+
+    return kendall_matrix
+
 def distance(X, Y, square=True):
     """
     Compute Euclidean distances between two sets of samples
