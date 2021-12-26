@@ -29,10 +29,17 @@
 #################
 
 from tqdm import tqdm as tqdm
-datapath = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\GE_Datasets\\'
 
+
+'''
+# Elis computer
+datapath = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\GE_Datasets_2\\'
 reports_path = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\RL_developmental_studies\\Reports\\tight_var_data\\'
+'''
 
+#Personal computer
+datapath = 'C:\\Users\\Jesus\\odrive\\Diag GDrive\\GE_Datasets_2\\'
+reports_path = 'C:\\Users\\Jesus\\odrive\\Diag GDrive\\Shared with Me\\RL_developmental_studies\\Reports\\tight_var_data\\'
 LOG_DIR = 'local_runs/'
 
 ##COPY TO NOTEBOOK FROM HERE!!!###
@@ -140,6 +147,7 @@ def get_hybrid_feature_matrix(link_ds, ccre_ds):
     ccre_activity_new = np.zeros((ccre_activity.shape[0], 32))
     ccre_activity_new[:, 8:32] = ccre_activity
     return torch.Tensor(np.concatenate((ge_values_new, ccre_activity_new))).cpu(), ge_count, ccre_count
+
 
 
 def get_kendall_matrix():
@@ -956,7 +964,7 @@ class AdaGAE():
         self.current_link_score = fast_genomic_distance_to_similarity(links, self.current_genomic_C,
                                                                       self.current_genomic_slope)
 
-        self.current_link_score += (self.current_link_score * kendall_matrix)
+        self.current_link_score += (self.current_link_score * kendall_matrix.detach().cpu().numpy())
 
         link_scores_tensor = torch.Tensor(self.current_link_score).to(self.device)
         element_max_distance_scores = torch.max(link_scores_tensor, dim=0)[0]
