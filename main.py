@@ -805,7 +805,7 @@ class AdaGAE():
         gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = 0, 0, 0, 0, 0, 0
 
 
-        if (self.current_cluster_number < 30) and (self.iteration % max_iter == 0):
+        if (self.current_cluster_number < 30) and (self.iteration % clustering_interval == 0):
 
             gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = self.clustering()
             tensorboard.add_scalar(GE_CC_SCORE_TAG, gene_cc_score, self.global_step)
@@ -816,8 +816,9 @@ class AdaGAE():
             tensorboard.add_scalar(DISTANCE_SCORE_TAG, distance_score, self.global_step)
 
 
-        scaled_ge_cc_score = gene_cc_score / 100
-        scaled_ccre_cc_score = ccre_cc_score / 400
+        scaled_ge_cc_score = gene_cc_score
+        scaled_ccre_cc_score = ccre_cc_score
+        scaled_distance_score = distance_score * 100
 
         reward = (0.25 * scaled_ge_cc_score) + \
                  (0.25 * scaled_ccre_cc_score) + \
@@ -1109,15 +1110,19 @@ layers = [input_dim, 24, 12]
 eval=False
 pre_trained = False
 gcn = False
+clustering_interval = 5
+
 learning_rate = 5 * 10 ** -3
 init_genomic_C = 3e5
 init_genomic_slope = 0.4
+
+
 
 init_sparsity = 50
 init_gbf = 0
 
 
-init_repulsive_loss_weight = 1
+init_repulsive_loss_weight = 2
 init_RQ_loss_weight = .1
 init_lambda_repulsive = 0.5
 
@@ -1129,11 +1134,6 @@ if __name__ == '__main__':
     ###
     modelname = '/updownspars_TRIS'
     tensorboard = SummaryWriter(LOG_DIR + modelname)
-
-    ###
-    ###
-    plt.rcParams["figure.figsize"] = (12, 12)
-    graphical_report_period_epochs = 6
 
     ###
     ###
@@ -1161,29 +1161,36 @@ if __name__ == '__main__':
     ###
     ###
 
+    def manual_run():
 
-    for epochsita in range(max_epoch):
-        epoch += 1
-        current_sparsity += sparsity_increment
-        current_genetic_balance_factor = gae.get_dinamic_param(init_gbf, final_gbf)
-        gae.epoch_losses = []
+        global epoch
+        global current_sparsity
 
-        for i in range(max_iter):
-            dummy_action = torch.Tensor([current_rq_loss_weight,
-                                         current_sparsity,
-                                         current_genetic_balance_factor,
-                                         current_repulsive_loss_weight,
-                                         current_lambda_repulsive]).to(device)
+        for epochsita in tqdm(range(max_epoch)):
+            epoch += 1
+            current_sparsity += sparsity_increment
+            current_genetic_balance_factor = gae.get_dinamic_param(init_gbf, final_gbf)
+            gae.epoch_losses = []
 
-            reward, loss, done_flag = gae.step(dummy_action)
-            print(loss.item())
-            gae.epoch_losses.append(loss.item())
+            for i in range(max_iter):
 
-        mean_loss = sum(gae.epoch_losses) / len(gae.epoch_losses)
-        print('epoch:%3d,' % epoch, 'loss: %6.5f' % mean_loss)
 
-    print('gae.current_cluster_number', gae.current_cluster_number)
+                dummy_action = torch.Tensor([current_rq_loss_weight,
+                                             current_sparsity,
+                                             current_genetic_balance_factor,
+                                             current_repulsive_loss_weight,
+                                             current_lambda_repulsive]).to(device)
 
+                reward, loss, done_flag = gae.step(dummy_action)
+                print(loss.item())
+                gae.epoch_losses.append(loss.item())
+
+            mean_loss = sum(gae.epoch_losses) / len(gae.epoch_losses)
+            print('epoch:%3d,' % epoch, 'loss: %6.5f' % mean_loss)
+
+        print('gae.current_cluster_number', gae.current_cluster_number)
+
+    manual_run()
     ##
 
     cpu_embedding = gae.gae_nn.embedding.detach().cpu().numpy()
