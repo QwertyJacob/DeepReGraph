@@ -64,6 +64,7 @@ from sklearn import linear_model
 import umap
 import umap.plot
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 
 ######
 ### SOME CONSTATNS
@@ -803,7 +804,7 @@ class AdaGAE():
         gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = 0, 0, 0, 0, 0, 0
 
 
-        if self.current_cluster_number < 30:
+        if clusterize and self.current_cluster_number < 30:
 
             gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = self.clustering()
             tensorboard.add_scalar(GE_CC_SCORE_TAG, gene_cc_score, self.global_step)
@@ -983,13 +984,13 @@ class AdaGAE():
 
     def clustering(self):
 
-        if (self.current_prediction is None) or (self.iteration % clustering_interval == 0):
-            cpu_embedding = self.gae_nn.embedding.detach().cpu().numpy()
-            km = KMeans(n_clusters=self.current_cluster_number).fit(cpu_embedding)
-            self.current_prediction = km.predict(cpu_embedding)
+        cpu_embedding = self.gae_nn.embedding.detach().cpu().numpy()
+        # km = KMeans(n_clusters=self.current_cluster_number).fit(cpu_embedding)
+        # self.current_prediction = km.predict(cpu_embedding)
+        clusterer = hdbscan.HDBSCAN(min_cluster_size=hdbscan_min_cluster_size, min_samples=hdbscan_min_samples)
+        self.current_prediction = clusterer.fit_predict(cpu_embedding)
 
         return self.cal_clustering_metric()
-
 
 
     def plot_clustering(self, prediction, umap_embedding):
@@ -1111,7 +1112,9 @@ layers = [input_dim, 24, 12]
 eval=False
 pre_trained = False
 gcn = False
-clustering_interval = 5
+clusterize =False
+hdbscan_min_cluster_size = 40
+hdbscan_min_samples = 5
 
 learning_rate = 5 * 10 ** -3
 init_genomic_C = 3e5
@@ -1146,18 +1149,18 @@ if __name__ == '__main__':
 
     ###
     ###
-
-    current_rq_loss_weight = 0.2
-    current_sparsity = 50
-    init_gbf = 0
-    final_gbf = 0.1
-    current_repulsive_loss_weight = 2
+    current_rq_loss_weight = 0.1
+    current_repulsive_loss_weight = 1
     current_lambda_repulsive = 0.6
 
-    sparsity_increment = 20
+    init_gbf = 0
+    final_gbf = 0.25
 
-    max_epoch = 15
-    max_iter = 20
+    current_sparsity = 50
+    sparsity_increment = 40
+
+    max_iter=15
+    max_epoch = 10
 
     ###
     ###
