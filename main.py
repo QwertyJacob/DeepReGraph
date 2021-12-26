@@ -809,7 +809,7 @@ class AdaGAE():
         gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = 0, 0, 0, 0, 0, 0
 
 
-        if clusterize and (self.current_cluster_number < 50) and (self.iteration % max_iter == 0):
+        if clusterize and (self.current_cluster_number < 30) and (self.iteration % max_iter == 0):
 
             gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = self.clustering()
             tensorboard.add_scalar(GE_CC_SCORE_TAG, gene_cc_score, self.global_step)
@@ -956,6 +956,7 @@ class AdaGAE():
         self.current_link_score = fast_genomic_distance_to_similarity(links, self.current_genomic_C,
                                                                       self.current_genomic_slope)
 
+        self.current_link_score += (self.current_link_score * kendall_matrix)
 
         link_scores_tensor = torch.Tensor(self.current_link_score).to(self.device)
         element_max_distance_scores = torch.max(link_scores_tensor, dim=0)[0]
@@ -1119,7 +1120,7 @@ layers = [input_dim, 24, 12]
 eval=False
 pre_trained = False
 gcn = False
-clusterize=False
+clusterize=True
 softmax_reconstruction = True
 differential_attractive_forces = True
 differential_repulsive_forces = True
