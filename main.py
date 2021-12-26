@@ -587,8 +587,7 @@ class AdaGAE():
         # notice that recons is actually the q distribution.
         # and that raw_adj is the p distribution. (before the symmetrization)
         '''
-        assert not np.isnan(self.raw_adj.detach().cpu().sum())
-        assert not np.isnan(torch.log(recons + 10 ** -10).detach().cpu().sum())
+
         # This acts as a REPULSIVE force for the embedding learning:
         repulsive_CE_term = -(self.raw_adj * torch.log(recons + 10 ** -10))
 
@@ -613,7 +612,6 @@ class AdaGAE():
         attractive_CE_term = attractive_CE_term.sum(dim=1)
         attractive_CE_term = attractive_CE_term.mean()
 
-        assert not np.isnan(attractive_CE_term.item())
 
         tensorboard.add_scalar(ATTRACTIVE_CE_TERM, attractive_CE_term.item(), self.global_step)
         '''
@@ -630,7 +628,6 @@ class AdaGAE():
         rayleigh_quotient_loss = torch.trace(
             self.gae_nn.embedding.t().matmul(laplacian).matmul(self.gae_nn.embedding)) / size
 
-        assert not np.isnan(rayleigh_quotient_loss.item())
 
         tensorboard.add_scalar(RQ_QUOTIENT_LOSS, rayleigh_quotient_loss.item(), self.global_step)
 
