@@ -520,6 +520,7 @@ class AdaGAE():
                                 self.pre_trained_state_dict,
                                 self.pre_computed_embedding,
                                 gcn).to(self.device)
+        self.current_prediction = None
         self.current_sparsity = init_sparsity
         self.current_gene_sparsity = math.ceil(self.current_sparsity / self.global_ccres_over_genes_ratio)
         if self.current_gene_sparsity == 0: self.current_gene_sparsity += 1
@@ -643,24 +644,24 @@ class AdaGAE():
 
         return loss
 
-    def cal_clustering_metric(self, predicted_labels):
+    def cal_clustering_metric(self):
 
-        ge_cc_raw, ccre_cc_raw, ge_clust_completeness, ccre_clust_completeness = self.get_raw_score(predicted_labels)
-        mean_heterogeneity = self.get_mean_heterogeneity(predicted_labels)
-        distance_score = self.get_mean_distance_scores(predicted_labels)
+        ge_cc_raw, ccre_cc_raw, ge_clust_completeness, ccre_clust_completeness = self.get_raw_score()
+        mean_heterogeneity = self.get_mean_heterogeneity()
+        distance_score = self.get_mean_distance_scores()
         return ge_cc_raw, ccre_cc_raw, mean_heterogeneity, ge_clust_completeness, ccre_clust_completeness, distance_score
 
-    def get_mean_distance_scores(self, predicted_labels):
+    def get_mean_distance_scores(self):
         distance_score_matrix = self.current_link_score[:ge_count, ge_count:]
-        cluster_labels = np.unique(predicted_labels)
+        cluster_labels = np.unique(self.current_prediction)
         distance_scores = []
 
         if -1 in cluster_labels:
             cluster_labels = cluster_labels[1:]
 
         for k in cluster_labels:
-            gene_cluster_mask = (predicted_labels == k)[:ge_count]
-            ccre_cluster_mask = (predicted_labels == k)[ge_count:]
+            gene_cluster_mask = (self.current_prediction == k)[:ge_count]
+            ccre_cluster_mask = (self.current_prediction == k)[ge_count:]
             current_distance_score_matrix = distance_score_matrix[gene_cluster_mask, :]
             current_distance_score_matrix = current_distance_score_matrix[:, ccre_cluster_mask]
             # If we have an "only ccres" or "only genes" cluster, we put distance score directly to zero
@@ -677,14 +678,14 @@ class AdaGAE():
         else:
             return sum(distance_scores) / len(distance_scores)
 
-    def get_mean_heterogeneity(self, predicted_labels):
+    def get_mean_heterogeneity(self):
         cluster_heterogeneities = []
-        le_classes = np.unique(predicted_labels)
+        le_classes = np.unique(self.current_prediction)
         if -1 in le_classes:
             le_classes = le_classes[1:]
 
         for cluster in le_classes:
-            cluster_points = _safe_indexing(self.class_label_array, predicted_labels == cluster)
+            cluster_points = _safe_indexing(self.class_label_array, self.current_prediction == cluster)
             cluster_gene_count = np.count_nonzero(cluster_points == 'gene')
             cluster_ccre_count = np.count_nonzero(cluster_points == 'ccre')
             current_ccres_over_genes_ratio = cluster_ccre_count / 1 + cluster_gene_count
@@ -722,10 +723,10 @@ class AdaGAE():
         else:
             return sum(cluster_concisenesses) / len(cluster_concisenesses)
 
-    def get_raw_score(self, predicted_labels):
+    def get_raw_score(self):
 
         ges = self.X.detach().cpu().numpy()[:ge_count][:, :8]
-        gene_labels = predicted_labels[:ge_count]
+        gene_labels = self.current_prediction[:ge_count]
         scattered_genes = 0
         if -1 in np.unique(gene_labels):
             scattered_gene_indexes = np.where(gene_labels == -1)
@@ -739,7 +740,7 @@ class AdaGAE():
         ge_clustering_completeness = 1 - scattered_genes / ge_count
 
         ccre_as = self.X.detach().cpu().numpy()[ge_count:][:, 8:]
-        ccre_labels = predicted_labels[ge_count:]
+        ccre_labels = self.current_prediction[ge_count:]
         scattered_ccres = 0
         if -1 in np.unique(ccre_labels):
             scattered_ccre_indexes = np.where(ccre_labels == -1)
@@ -802,7 +803,7 @@ class AdaGAE():
         gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = 0, 0, 0, 0, 0, 0
 
 
-        if (self.current_cluster_number < 30) and (self.iteration % clustering_interval == 0):
+        if self.current_cluster_number < 30:
 
             gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = self.clustering()
             tensorboard.add_scalar(GE_CC_SCORE_TAG, gene_cc_score, self.global_step)
@@ -982,10 +983,13 @@ class AdaGAE():
 
     def clustering(self):
 
-        cpu_embedding = self.gae_nn.embedding.detach().cpu().numpy()
-        km = KMeans(n_clusters=self.current_cluster_number).fit(cpu_embedding)
-        prediction = km.predict(cpu_embedding)
-        return self.cal_clustering_metric(prediction)
+        if (self.current_prediction is None) or (self.iteration % clustering_interval == 0):
+            cpu_embedding = self.gae_nn.embedding.detach().cpu().numpy()
+            km = KMeans(n_clusters=self.current_cluster_number).fit(cpu_embedding)
+            self.current_prediction = km.predict(cpu_embedding)
+
+        return self.cal_clustering_metric()
+
 
 
     def plot_clustering(self, prediction, umap_embedding):
@@ -1158,6 +1162,7 @@ if __name__ == '__main__':
     ###
     ###
 
+    @profile(output_file='profiling_adagae')
     def manual_run():
 
         global epoch
@@ -1179,7 +1184,7 @@ if __name__ == '__main__':
                                              current_lambda_repulsive]).to(device)
 
                 reward, loss, done_flag = gae.step(dummy_action)
-                print(loss.item())
+                print(reward)
                 gae.epoch_losses.append(loss.item())
 
             mean_loss = sum(gae.epoch_losses) / len(gae.epoch_losses)
