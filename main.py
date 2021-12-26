@@ -481,12 +481,8 @@ class AdaGAE_NN(torch.nn.Module):
             self.embedding = torch.relu(embedding)
 
         distances = distance(self.embedding.t(), self.embedding.t())
-        if softmax_reconstruction:
-            softmax = torch.nn.Softmax(dim=1)
-            recons_w = softmax(-distances)
-        else:
-            recons_w = 1 / (distances + 1)
-            recons_w /= recons_w.sum(dim=1).reshape([recons_w.shape[0], 1])
+        softmax = torch.nn.Softmax(dim=1)
+        recons_w = softmax(-distances)
         return recons_w + 10 ** -10
 
 
@@ -596,9 +592,8 @@ class AdaGAE():
         # This acts as a REPULSIVE force for the embedding learning:
         repulsive_CE_term = -(self.raw_adj * torch.log(recons + 10 ** -10))
 
-        if differential_repulsive_forces:
-            repulsive_CE_term[:ge_count] *= self.current_lambda_repulsive
-            repulsive_CE_term[ge_count:] *= (1 - self.current_lambda_repulsive)
+        repulsive_CE_term[:ge_count] *= self.current_lambda_repulsive
+        repulsive_CE_term[ge_count:] *= (1 - self.current_lambda_repulsive)
 
         repulsive_CE_term = repulsive_CE_term.sum(dim=1)
         repulsive_CE_term = repulsive_CE_term.mean()
@@ -810,7 +805,7 @@ class AdaGAE():
         gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = 0, 0, 0, 0, 0, 0
 
 
-        if clusterize and (self.current_cluster_number < 30) and (self.iteration % max_iter == 0):
+        if (self.current_cluster_number < 30) and (self.iteration % max_iter == 0):
 
             gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = self.clustering()
             tensorboard.add_scalar(GE_CC_SCORE_TAG, gene_cc_score, self.global_step)
@@ -1077,7 +1072,6 @@ def save(epoch):
     torch.save(gae.gae_nn.state_dict(), datapath + 'models' + modelname + '_model_' + str(epoch) + '_epochs')
     torch.save(gae.gae_nn.embedding, datapath + 'models' + modelname + '_embedding_' + str(epoch) + '_epochs')
 
-
 ###########
 ## HYPER-PARAMS
 ###########
@@ -1115,9 +1109,6 @@ layers = [input_dim, 24, 12]
 eval=False
 pre_trained = False
 gcn = False
-clusterize=False
-softmax_reconstruction = True
-differential_repulsive_forces = True
 learning_rate = 5 * 10 ** -3
 init_genomic_C = 3e5
 init_genomic_slope = 0.4
