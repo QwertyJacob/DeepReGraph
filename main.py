@@ -972,6 +972,9 @@ class AdaGAE():
         scaled_link_scores = (link_scores_tensor.t() * element_max_similarity_scores / element_max_distance_scores)
         scaled_link_scores = scaled_link_scores.t()
 
+        assert not np.isnan(scaled_link_scores.detach().cpu().sum())
+        assert not np.isnan(weights.detach().cpu().sum())
+
 
         weights = (weights * (1 - self.current_genetic_balance_factor)) +  (scaled_link_scores * self.current_genetic_balance_factor)
 
@@ -981,11 +984,10 @@ class AdaGAE():
             weights.fill_diagonal_(0)
 
 
-        if 0 in weights.sum(dim=1):
-          print('K-sparse solution produced a cluster of 1 element. Will now halt')
         # row-wise normalization.
-        weights /= weights.sum(dim=1).reshape([size, 1])
+        weights /= (weights.sum(dim=1)+1e-10).reshape([size, 1])
 
+        assert not np.isnan(weights.detach().cpu().sum())
 
         torch.cuda.empty_cache()
         # UN-symmetric connectivity distribution
@@ -1128,7 +1130,7 @@ layers = [input_dim, 24, 12]
 eval=False
 pre_trained = False
 gcn = False
-clusterize=True
+clusterize=False
 softmax_reconstruction = True
 differential_attractive_forces = True
 differential_repulsive_forces = True
@@ -1136,14 +1138,14 @@ learning_rate = 5 * 10 ** -3
 init_genomic_C = 3e5
 init_genomic_slope = 0.4
 
-init_sparsity = 10
+init_sparsity = 50
 init_gbf = 0
 
 
-init_repulsive_loss_weight = 0
+init_repulsive_loss_weight = 1
 init_attractive_loss_weight = 0
-init_RQ_loss_weight = 1
-init_lambda_attractive = 0.5
+init_RQ_loss_weight = .1
+init_lambda_attractive = 0.6
 init_lambda_repulsive = 0.5
 
 
@@ -1171,15 +1173,16 @@ if __name__ == '__main__':
     ###
     ###
 
-    current_rq_loss_weight = 1
-    current_sparsity = 10
-    current_genetic_balance_factor = 0
-    current_repulsive_loss_weight = 0.1
+    current_rq_loss_weight = 0.2
+    current_sparsity = 50
+    init_gbf = 0
+    final_gbf = 0.1
+    current_repulsive_loss_weight = 2
     current_attractive_ce_loss_weight = 0
-    current_lambda_repulsive = 0.5
+    current_lambda_repulsive = 0.6
     current_lambda_attractive = 0.5
 
-    sparsity_increment = 10
+    sparsity_increment = 20
 
     max_epoch = 15
     max_iter = 20
@@ -1191,6 +1194,7 @@ if __name__ == '__main__':
     for epochsita in range(max_epoch):
         epoch += 1
         current_sparsity += sparsity_increment
+        current_genetic_balance_factor = gae.get_dinamic_param(init_gbf, final_gbf)
         gae.epoch_losses = []
 
         for i in range(max_iter):
