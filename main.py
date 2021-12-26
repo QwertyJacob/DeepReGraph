@@ -61,8 +61,6 @@ from sklearn.preprocessing import LabelEncoder, MinMaxScaler
 from sklearn.cluster import KMeans
 from sklearn.utils import _safe_indexing
 from sklearn import linear_model
-
-
 import umap
 import umap.plot
 import matplotlib.pyplot as plt
@@ -147,7 +145,6 @@ def get_hybrid_feature_matrix(link_ds, ccre_ds):
     ccre_activity_new = np.zeros((ccre_activity.shape[0], 32))
     ccre_activity_new[:, 8:32] = ccre_activity
     return torch.Tensor(np.concatenate((ge_values_new, ccre_activity_new))).cpu(), ge_count, ccre_count
-
 
 
 def get_kendall_matrix():
@@ -537,8 +534,8 @@ class AdaGAE():
         self.current_cluster_number = math.ceil( (ge_count + ccre_count) / self.current_sparsity )
         self.init_adj_matrices()
         self.current_repulsive_loss_weight = init_repulsive_loss_weight
-        self.current_attractive_ce_loss_weight = init_attractive_loss_weight
-        self.current_lambda_attractive = init_lambda_attractive
+        # self.current_attractive_ce_loss_weight = init_attractive_loss_weight
+        # self.current_lambda_attractive = init_lambda_attractive
         self.current_lambda_repulsive = init_lambda_repulsive
         if not self.pre_trained: self.init_embedding()
 
@@ -608,7 +605,7 @@ class AdaGAE():
 
         tensorboard.add_scalar(REPULSIVE_CE_TERM, repulsive_CE_term.item(), self.global_step)
 
-
+        '''
         # If we use the Fuzzy Cross Entropy. (Binary cross entropy)
         # We could create an ATTRACTIVE force
         # https://towardsdatascience.com/how-exactly-umap-works-13e3040e1668
@@ -624,6 +621,8 @@ class AdaGAE():
         assert not np.isnan(attractive_CE_term.item())
 
         tensorboard.add_scalar(ATTRACTIVE_CE_TERM, attractive_CE_term.item(), self.global_step)
+        '''
+
 
         # This loss acts as an attractive force for the embedding:
         # It strengthens element-wise similarities
@@ -786,14 +785,8 @@ class AdaGAE():
         self.current_repulsive_loss_weight = action[3]
         tensorboard.add_scalar(REPULSIVE_CE_LOSS_WEIGHT_LABEL, self.current_repulsive_loss_weight, self.global_step)
 
-        self.current_attractive_ce_loss_weight = action[4]
-        tensorboard.add_scalar(ATTRACTIVE_CE_LOSS_WEIGHT_LABEL, self.current_attractive_ce_loss_weight, self.global_step)
-
-        self.current_lambda_repulsive = action[5]
+        self.current_lambda_repulsive = action[4]
         tensorboard.add_scalar(LAMBDA_REPULSIVE_LABEL, self.current_lambda_repulsive, self.global_step)
-
-        self.current_lambda_attractive = action[6]
-        tensorboard.add_scalar(LAMBDA_ATTRACTIVE_LABEL, self.current_lambda_attractive, self.global_step)
 
         if (self.current_sparsity != prev_sparsity) or (self.current_genetic_balance_factor != prev_gbf):
             self.update_graph()
@@ -851,9 +844,7 @@ class AdaGAE():
             current_sparsity = self.current_sparsity + sparsity_increment
             current_genetic_balance_factor = self.get_dinamic_param(init_gbf, final_gbf)
             current_repulsive_loss_weight = self.get_dinamic_param(init_repulsive_loss_weight, final_repulsive_loss_weight)
-            current_attractive_ce_loss_weight = self.get_dinamic_param(init_attractive_loss_weight, final_attractive_loss_weight)
             current_lambda_repulsive = self.get_dinamic_param(init_lambda_repulsive, final_lambda_repulsive)
-            current_lambda_attractive = self.get_dinamic_param(init_lambda_attractive, final_lambda_attractive)
 
             for i in range(max_iter):
 
@@ -861,9 +852,7 @@ class AdaGAE():
                                              current_sparsity,
                                              current_genetic_balance_factor,
                                              current_repulsive_loss_weight,
-                                             current_attractive_ce_loss_weight,
-                                             current_lambda_repulsive,
-                                             current_lambda_attractive]).to(self.device)
+                                             current_lambda_repulsive]).to(self.device)
 
                 reward, loss, done_flag = self.step(dummy_action)
                 self.epoch_losses.append(loss.item())
@@ -972,9 +961,6 @@ class AdaGAE():
         scaled_link_scores = (link_scores_tensor.t() * element_max_similarity_scores / element_max_distance_scores)
         scaled_link_scores = scaled_link_scores.t()
 
-        assert not np.isnan(scaled_link_scores.detach().cpu().sum())
-        assert not np.isnan(weights.detach().cpu().sum())
-
 
         weights = (weights * (1 - self.current_genetic_balance_factor)) +  (scaled_link_scores * self.current_genetic_balance_factor)
 
@@ -987,7 +973,6 @@ class AdaGAE():
         # row-wise normalization.
         weights /= (weights.sum(dim=1)+1e-10).reshape([size, 1])
 
-        assert not np.isnan(weights.detach().cpu().sum())
 
         torch.cuda.empty_cache()
         # UN-symmetric connectivity distribution
@@ -1132,7 +1117,6 @@ pre_trained = False
 gcn = False
 clusterize=False
 softmax_reconstruction = True
-differential_attractive_forces = True
 differential_repulsive_forces = True
 learning_rate = 5 * 10 ** -3
 init_genomic_C = 3e5
@@ -1143,9 +1127,7 @@ init_gbf = 0
 
 
 init_repulsive_loss_weight = 1
-init_attractive_loss_weight = 0
 init_RQ_loss_weight = .1
-init_lambda_attractive = 0.6
 init_lambda_repulsive = 0.5
 
 
@@ -1178,9 +1160,7 @@ if __name__ == '__main__':
     init_gbf = 0
     final_gbf = 0.1
     current_repulsive_loss_weight = 2
-    current_attractive_ce_loss_weight = 0
     current_lambda_repulsive = 0.6
-    current_lambda_attractive = 0.5
 
     sparsity_increment = 20
 
@@ -1202,9 +1182,7 @@ if __name__ == '__main__':
                                          current_sparsity,
                                          current_genetic_balance_factor,
                                          current_repulsive_loss_weight,
-                                         current_attractive_ce_loss_weight,
-                                         current_lambda_repulsive,
-                                         current_lambda_attractive]).to(device)
+                                         current_lambda_repulsive]).to(device)
 
             reward, loss, done_flag = gae.step(dummy_action)
             print(loss.item())
@@ -1268,14 +1246,9 @@ init_gbf = 0.5
 final_gbf = 1
 init_repulsive_loss_weight = 1
 final_repulsive_loss_weight = 1
-init_attractive_loss_weight = 0
-final_attractive_loss_weight = 0
 init_RQ_loss_weight = 0
 final_RQ_loss_weight = 0
 
-differential_attractive_forces = True
-init_lambda_attractive = 0.5
-final_lambda_attractive = 0.5
 
 differential_repulsive_forces = True
 init_lambda_repulsive = 0.5
