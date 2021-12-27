@@ -57,7 +57,7 @@ import math
 import PIL.Image
 from torchvision.transforms import ToTensor
 import hdbscan
-from sklearn.preprocessing import LabelEncoder, MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler
 from sklearn.cluster import KMeans
 from sklearn.utils import _safe_indexing
 from sklearn import linear_model
@@ -66,16 +66,8 @@ import umap.plot
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
-######
-### SOME CONSTATNS
-######
 
-plt.rcParams["figure.figsize"] = (10, 10)
 
-# generate a list of markers and another of colors
-markers = ["s", "o", "$f$", "v", "^", "<", ">", "p", "$L$", "x"]
-colors = ['r', 'g', 'b', 'c', 'm', 'y', 'k', 'aquamarine', 'tab:gray', 'xkcd:sky blue']
-sizes = [32, 36, 39, 34, 37, 38, 32, 33, 35, 37]
 
 
 #######################
@@ -232,7 +224,7 @@ def get_kendall_matrix():
 
     print('kendall matrix computed...')
 
-    return kendall_matrix.to(device)
+    return kendall_matrix
 
 def distance(X, Y, square=True):
     """
@@ -948,7 +940,8 @@ class AdaGAE():
         self.current_link_score = fast_genomic_distance_to_similarity(links, self.current_genomic_C,
                                                                       self.current_genomic_slope)
 
-        self.current_link_score += (self.current_link_score * kendall_matrix.detach().cpu().numpy())
+        if use_kendall_matrix:
+            self.current_link_score += (self.current_link_score * kendall_matrix.detach().numpy())
 
         link_scores_tensor = torch.Tensor(self.current_link_score).to(self.device)
         element_max_distance_scores = torch.max(link_scores_tensor, dim=0)[0]
@@ -956,6 +949,7 @@ class AdaGAE():
         scaled_link_scores = (link_scores_tensor.t() * element_max_similarity_scores / element_max_distance_scores)
         scaled_link_scores = scaled_link_scores.t()
 
+        assert not np.isnan(weights.detach().cpu().numpy().sum())
 
         weights = (weights * (1 - self.current_genetic_balance_factor)) +  (scaled_link_scores * self.current_genetic_balance_factor)
 
@@ -993,26 +987,44 @@ class AdaGAE():
         return self.cal_clustering_metric()
 
 
-    def plot_clustering(self, prediction, umap_embedding):
-        le = LabelEncoder()
-        labels = le.fit_transform(prediction)
-        for cluster in le.classes_:
-            cluster_points = _safe_indexing(umap_embedding, labels == cluster)
+    def plot_clustering(self,bi_dim_embedding=None):
+
+        if layers[-1] > 2:
+            if bi_dim_embedding==None:
+                bi_dim_embedding = umap.UMAP(
+                    n_neighbors=30,
+                    min_dist=0
+                ).fit_transform(self.gae_nn.embedding.detach().cpu().numpy())
+        else:
+            bi_dim_embedding = self.gae_nn.embedding.detach().cpu()
+
+        cmap = cm.get_cmap('viridis', max(gae.current_prediction) + 1)
+        markers = ["s", "o", "$f$", "v", "^", "<", ">", "p", "$L$", "x"]
+
+        for cluster in range(0,max(gae.current_prediction)+1):
+            cluster_points = _safe_indexing(bi_dim_embedding, gae.current_prediction == cluster)
             cluster_marker = markers[cluster % len(markers)]
-            cluster_color = colors[cluster % len(colors)]
-            cluster_marker_size = sizes[cluster % len(sizes)]
             plt.scatter(cluster_points[:, 0],
                         cluster_points[:, 1],
                         marker=cluster_marker,
-                        color=cluster_color,
-                        label='Cluster' + str(cluster),
-                        s=cluster_marker_size)
+                        color=cmap[cluster],
+                        label='Cluster' + str(cluster))
         plt.legend()
         if not eval:
             self.send_image_to_tensorboard(plt, UMAP_CLUSTER_PLOT_TAG)
         plt.show()
 
-    def plot_classes(self, umap_embedding):
+
+    def plot_classes(self, bi_dim_embedding=None, only_ccres=False):
+
+        if layers[-1] > 2:
+            if bi_dim_embedding==None:
+                bi_dim_embedding = umap.UMAP(
+                    n_neighbors=30,
+                    min_dist=0
+                ).fit_transform(self.gae_nn.embedding.detach().cpu())
+        else:
+            bi_dim_embedding = self.gae_nn.embedding.detach().cpu()
 
         class_labels = np.array(ge_class_labels + ['ccres'] * ccre_count)
         classes = np.unique(class_labels)
@@ -1022,10 +1034,10 @@ class AdaGAE():
         classplot_colors = ['aquamarine', 'r', 'g', 'g', 'r']
         classplot_sizes = [10, 40, 40, 40, 40]
         for idx, elem_class in enumerate(classes):
-            cluster_points = _safe_indexing(umap_embedding, class_labels == elem_class)
-            cluster_marker = classplot_markers[idx % len(markers)]
-            cluster_color = classplot_colors[idx % len(colors)]
-            cluster_marker_size = classplot_sizes[idx % len(sizes)]
+            cluster_points = _safe_indexing(bi_dim_embedding, class_labels == elem_class)
+            cluster_marker = classplot_markers[idx]
+            cluster_color = classplot_colors[idx]
+            cluster_marker_size = classplot_sizes[idx]
             plt.scatter(cluster_points[:, 0],
                         cluster_points[:, 1],
                         marker=cluster_marker,
@@ -1033,10 +1045,13 @@ class AdaGAE():
                         label=elem_class,
                         alpha=classplot_alphas[idx],
                         s=cluster_marker_size)
+            if only_ccres:
+                break
         plt.legend()
         if not eval:
             self.send_image_to_tensorboard(plt, UMAP_CLASS_PLOT_TAG)
         plt.show()
+
 
     def send_image_to_tensorboard(self, plt, tag):
         buf = io.BytesIO()
@@ -1112,9 +1127,11 @@ layers = [input_dim, 24, 12]
 eval=False
 pre_trained = False
 gcn = False
-clusterize =False
 hdbscan_min_cluster_size = 40
 hdbscan_min_samples = 5
+clusterize =False
+use_kendall_matrix = True
+
 
 learning_rate = 5 * 10 ** -3
 init_genomic_C = 3e5
@@ -1198,40 +1215,6 @@ if __name__ == '__main__':
     manual_run()
     ##
 
-    cpu_embedding = gae.gae_nn.embedding.detach().cpu().numpy()
-
-    umap_embedding = umap.UMAP(
-        n_neighbors=30,
-        min_dist=0
-    ).fit_transform(cpu_embedding)
-
-
-
-    ##
-
-    class_labels = np.array(ge_class_labels + ['ccres'] * ccre_count)
-    classes = np.unique(class_labels)
-
-    classplot_alphas = [0.1, 1, 1, 1, 1]
-    classplot_markers = ["o", "^", "v", "v", "^"]
-    classplot_colors = ['aquamarine', 'r', 'g', 'g', 'r']
-    classplot_sizes = [10, 40, 40, 40, 40]
-    for idx, elem_class in enumerate(classes):
-        cluster_points = _safe_indexing(umap_embedding, class_labels == elem_class)
-        cluster_marker = classplot_markers[idx % len(markers)]
-        cluster_color = classplot_colors[idx % len(colors)]
-        cluster_marker_size = classplot_sizes[idx % len(sizes)]
-        plt.scatter(cluster_points[:, 0],
-                    cluster_points[:, 1],
-                    marker=cluster_marker,
-                    color=cluster_color,
-                    label=elem_class,
-                    alpha=classplot_alphas[idx],
-                    s=cluster_marker_size)
-
-    plt.legend()
-    # gae.send_image_to_tensorboard(plt, UMAP_CLASS_PLOT_TAG)
-    plt.show()
 
 
 
