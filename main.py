@@ -940,8 +940,7 @@ class AdaGAE():
         self.current_link_score = fast_genomic_distance_to_similarity(links, self.current_genomic_C,
                                                                       self.current_genomic_slope)
 
-        if use_kendall_matrix:
-            self.current_link_score += (self.current_link_score * kendall_matrix.detach().numpy())
+        self.current_link_score += (kendall_coeff * self.current_link_score * kendall_matrix.detach().numpy())
 
         link_scores_tensor = torch.Tensor(self.current_link_score).to(self.device)
         element_max_distance_scores = torch.max(link_scores_tensor, dim=0)[0]
@@ -1130,7 +1129,7 @@ gcn = False
 hdbscan_min_cluster_size = 40
 hdbscan_min_samples = 5
 clusterize =False
-use_kendall_matrix = True
+kendall_coeff = 10
 
 
 learning_rate = 5 * 10 ** -3
