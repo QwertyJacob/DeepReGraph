@@ -57,7 +57,6 @@ import math
 import PIL.Image
 from torchvision.transforms import ToTensor
 import hdbscan
-from sklearn.preprocessing import MinMaxScaler
 from sklearn.cluster import KMeans
 from sklearn.utils import _safe_indexing
 from sklearn import linear_model
@@ -150,21 +149,11 @@ def get_kendall_matrix():
     acet = numpy_X[ge_count:,16:24]
     atac = numpy_X[ge_count:,24:32]
 
-    gene_scaler = MinMaxScaler()
-    met_scaler = MinMaxScaler()
-    acet_scaler = MinMaxScaler()
-    atac_scaler = MinMaxScaler()
-
-    scaled_gene_exp = gene_scaler.fit_transform(gene_exp)
-    scaled_met = met_scaler.fit_transform(met)
-    scaled_acet = acet_scaler.fit_transform(acet)
-    scaled_atac = atac_scaler.fit_transform(atac)
-
     print('computing kendall matrix...')
 
     gene_exp_slopes = []
     reg = linear_model.LinearRegression()
-    for gene_exp_row in tqdm(scaled_gene_exp):
+    for gene_exp_row in tqdm(gene_exp):
 
       reg.fit(time_steps.reshape(-1,1),gene_exp_row)
       Y_pred = reg.predict(time_steps.reshape(-1,1))
@@ -175,7 +164,7 @@ def get_kendall_matrix():
 
     met_slopes = []
     reg = linear_model.LinearRegression()
-    for met_row in tqdm(scaled_met):
+    for met_row in tqdm(met):
 
       reg.fit(time_steps.reshape(-1,1),met_row)
       Y_pred = reg.predict(time_steps.reshape(-1,1))
@@ -186,7 +175,7 @@ def get_kendall_matrix():
 
     acet_slopes = []
     reg = linear_model.LinearRegression()
-    for acet_row in tqdm(scaled_acet):
+    for acet_row in tqdm(acet):
 
       reg.fit(time_steps.reshape(-1,1),acet_row)
       Y_pred = reg.predict(time_steps.reshape(-1,1))
@@ -197,7 +186,7 @@ def get_kendall_matrix():
 
     atac_slopes = []
     reg = linear_model.LinearRegression()
-    for atac_row in tqdm(scaled_atac):
+    for atac_row in tqdm(atac):
 
       reg.fit(time_steps.reshape(-1,1),atac_row)
       Y_pred = reg.predict(time_steps.reshape(-1,1))
@@ -207,16 +196,28 @@ def get_kendall_matrix():
       # plt.show()
 
 
+    gene_exp_slopes = np.array(gene_exp_slopes)
+    #gene_exp_slopes = (gene_exp_slopes - gene_exp_slopes.min()) / (gene_exp_slopes.max()- gene_exp_slopes.min())
+
+    atac_slopes = np.array(atac_slopes)
+    #atac_slopes = (atac_slopes - atac_slopes.min()) / (atac_slopes.max()- atac_slopes.min())
+
+    met_slopes = np.array(met_slopes)
+    #met_slopes = (met_slopes - met_slopes.min()) / (met_slopes.max()- met_slopes.min())
+
+    acet_slopes = np.array(acet_slopes)
+    #acet_slopes = (acet_slopes - acet_slopes.min()) / (acet_slopes.max()- acet_slopes.min())
+
+
     dim = ge_count + ccre_count
     kendall_matrix = torch.zeros(dim,dim)
-    gene_slopes = np.array(gene_exp_slopes)
-    ccre_slopes = (np.array(atac_slopes) + np.array(acet_slopes) - np.array(met_slopes))/3
+    ccre_slopes = (atac_slopes + acet_slopes - met_slopes)/3
 
     ccre_trend_upright_submatrix = np.repeat(ccre_slopes.reshape(-1,1), ge_count).reshape(ccre_count,-1).transpose()
-    gene_trend_upright_submatrix = np.repeat(gene_slopes.reshape(1,-1), ccre_count).reshape(ge_count,-1)
+    gene_trend_upright_submatrix = np.repeat(gene_exp_slopes.reshape(1,-1), ccre_count).reshape(ge_count,-1)
     kendall_matrix[:ge_count,ge_count:] = torch.Tensor(gene_trend_upright_submatrix + ccre_trend_upright_submatrix)
 
-    gene_trend_downleft_submatrix = np.repeat(gene_slopes.reshape(-1,1), ccre_count).reshape(-1,ccre_count).transpose()
+    gene_trend_downleft_submatrix = np.repeat(gene_exp_slopes.reshape(-1,1), ccre_count).reshape(-1,ccre_count).transpose()
     ccre_trend_downleft_submatrix = np.repeat(ccre_slopes.reshape(1,-1), ge_count).reshape(ccre_count,-1)
     kendall_matrix[ge_count:,:ge_count] = torch.Tensor(gene_trend_downleft_submatrix + ccre_trend_downleft_submatrix)
     kendall_matrix.abs_()
@@ -485,7 +486,8 @@ class AdaGAE():
                  device=None,
                  pre_trained=False,
                  pre_trained_state_dict='models/combined_adagae_z12_initk150_150epochs',
-                 pre_computed_embedding='models/combined_adagae_z12_initk150_150epochs_embedding'):
+                 pre_computed_embedding='models/combined_adagae_z12_initk150_150epochs_embedding',
+                 global_step=0):
 
         super(AdaGAE, self).__init__()
 
@@ -495,7 +497,7 @@ class AdaGAE():
         self.pre_trained = pre_trained
         self.pre_trained_state_dict = pre_trained_state_dict
         self.pre_computed_embedding = pre_computed_embedding
-        self.global_step = 0
+        self.global_step = global_step
         self.global_ccres_over_genes_ratio = (ccre_count / ge_count)
         self.reset()
 
@@ -851,7 +853,7 @@ class AdaGAE():
 
     def get_dinamic_param(self, init_value, final_value):
         T = max_epoch * max_iter
-        return init_value + ((final_value - init_value) * (1 / (1 + math.e ** (-1 * (self.global_step - (T/ 2)) / (T/10)))))
+        return init_value + ((final_value - init_value) * (1 / (1 + math.e ** (-1 * (self.iteration - (T/ 2)) / (T/10)))))
 
     def cal_weights_via_CAN(self, transposed_data_matrix):
         """
@@ -940,7 +942,8 @@ class AdaGAE():
         self.current_link_score = fast_genomic_distance_to_similarity(links, self.current_genomic_C,
                                                                       self.current_genomic_slope)
 
-        self.current_link_score += (kendall_coeff * self.current_link_score * kendall_matrix.detach().numpy())
+        if use_kendall_matrix:
+            self.current_link_score = self.current_link_score * kendall_matrix.detach().numpy()
 
         link_scores_tensor = torch.Tensor(self.current_link_score).to(self.device)
         element_max_distance_scores = torch.max(link_scores_tensor, dim=0)[0]
@@ -978,15 +981,15 @@ class AdaGAE():
     def clustering(self):
 
         cpu_embedding = self.gae_nn.embedding.detach().cpu().numpy()
-        # km = KMeans(n_clusters=self.current_cluster_number).fit(cpu_embedding)
-        # self.current_prediction = km.predict(cpu_embedding)
-        clusterer = hdbscan.HDBSCAN(min_cluster_size=hdbscan_min_cluster_size, min_samples=hdbscan_min_samples)
-        self.current_prediction = clusterer.fit_predict(cpu_embedding)
+        km = KMeans(n_clusters=self.current_cluster_number).fit(cpu_embedding)
+        self.current_prediction = km.predict(cpu_embedding)
+        #clusterer = hdbscan.HDBSCAN(min_cluster_size=hdbscan_min_cluster_size, min_samples=hdbscan_min_samples)
+        #self.current_prediction = clusterer.fit_predict(cpu_embedding)
 
         return self.cal_clustering_metric()
 
 
-    def plot_clustering(self,bi_dim_embedding=None):
+    def plot_clustering(self,bi_dim_embedding=None, title=None):
 
         if layers[-1] > 2:
             if bi_dim_embedding==None:
@@ -1006,15 +1009,17 @@ class AdaGAE():
             plt.scatter(cluster_points[:, 0],
                         cluster_points[:, 1],
                         marker=cluster_marker,
-                        color=cmap[cluster],
+                        color=cmap.colors[cluster],
                         label='Cluster' + str(cluster))
         plt.legend()
+        if title != None:
+            plt.title(title)
         if not eval:
             self.send_image_to_tensorboard(plt, UMAP_CLUSTER_PLOT_TAG)
         plt.show()
 
 
-    def plot_classes(self, bi_dim_embedding=None, only_ccres=False):
+    def plot_classes(self, bi_dim_embedding=None, only_ccres=False, title=None):
 
         if layers[-1] > 2:
             if bi_dim_embedding==None:
@@ -1047,6 +1052,8 @@ class AdaGAE():
             if only_ccres:
                 break
         plt.legend()
+        if title != None:
+            plt.title(title)
         if not eval:
             self.send_image_to_tensorboard(plt, UMAP_CLASS_PLOT_TAG)
         plt.show()
@@ -1094,7 +1101,7 @@ def save(epoch):
 ###########
 
 
-plt.rcParams["figure.figsize"] = (12, 12)
+plt.rcParams["figure.figsize"] = (10, 10)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 genes_to_pick = 200
@@ -1117,66 +1124,52 @@ kendall_matrix = get_kendall_matrix()
 X /= torch.max(X)
 X = torch.Tensor(X).to(device)
 input_dim = X.shape[1]
-layers = [input_dim, 24, 12]
+layers = [input_dim, 12, 2]
 
 ###
 ###
-
-
-eval=False
-pre_trained = False
-gcn = False
-hdbscan_min_cluster_size = 40
-hdbscan_min_samples = 5
-clusterize =False
-kendall_coeff = 10
-
-
-learning_rate = 5 * 10 ** -3
-init_genomic_C = 3e5
-init_genomic_slope = 0.4
-
-
-
-init_sparsity = 50
-init_gbf = 0
-
-
-init_repulsive_loss_weight = 2
-init_RQ_loss_weight = .1
-init_lambda_repulsive = 0.5
-
 
 
 if __name__ == '__main__':
 
-    ###
-    ###
-    modelname = '/updownspars_TRIS'
+    eval = False
+    pre_trained = False
+    gcn = False
+    hdbscan_min_cluster_size = 40
+    hdbscan_min_samples = 5
+    clusterize = False
+    use_kendall_matrix = True
+
+    learning_rate = 5 * 10 ** -3
+    init_genomic_C = 3e5
+    init_genomic_slope = 0.4
+
+    current_sparsity = init_sparsity = 10
+
+    init_gbf = 0.5
+    final_gbf = 0.1
+
+    init_repulsive_loss_weight = 2
+    final_repulsive_loss_weight = 0.1
+
+    init_RQ_loss_weight = .1
+    final_RQ_loss_weight = 1.5
+
+    current_lambda_repulsive = init_lambda_repulsive = 0.6
+
+    modelname = '/champion'
     tensorboard = SummaryWriter(LOG_DIR + modelname)
 
-    ###
-    ###
+    sparsity_increment = 10
+
+    max_iter = 15
+    max_epoch = 40
+
+    epoch = 0
     gae = AdaGAE(X,
                  device=device,
                  pre_trained=False)
 
-    epoch = 0
-
-    ###
-    ###
-    current_rq_loss_weight = 0.1
-    current_repulsive_loss_weight = 1
-    current_lambda_repulsive = 0.6
-
-    init_gbf = 0
-    final_gbf = 0.25
-
-    current_sparsity = 50
-    sparsity_increment = 40
-
-    max_iter=15
-    max_epoch = 10
 
     ###
     ###
@@ -1191,6 +1184,9 @@ if __name__ == '__main__':
             epoch += 1
             current_sparsity += sparsity_increment
             current_genetic_balance_factor = gae.get_dinamic_param(init_gbf, final_gbf)
+            current_rq_loss_weight = gae.get_dinamic_param(init_RQ_loss_weight, final_RQ_loss_weight)
+            current_repulsive_loss_weight = gae.get_dinamic_param(init_repulsive_loss_weight,
+                                                                  final_repulsive_loss_weight)
             gae.epoch_losses = []
 
             for i in range(max_iter):
