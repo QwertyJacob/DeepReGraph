@@ -56,15 +56,27 @@ class Node:
         (combines offline and online input as specified in the reference [8]
         '''
         bid, bvl, SN = -1, -100000000.0, self._action_size
+
         for k in range(self._action_size):
             SN += self._N[k]
+
         for k in range(self._action_size):
-            curvl = (self._P[k] + self._Q[k]) / (self._N[k] + 1.0)
+            # exploitation term
+
+            # equally weighted mean -> not (4) in the paper.
+            #TODO verify if this equation gives better results than eq. (4) in the paper.
+            # curvl = (self._P[k] + self._Q[k]) / (self._N[k] + 1.0)
+
+            # "Prior" prioritized weigthed mean ;) -> this is eq (4) in the paper.
+            curvl = ((self._P[k]*self._N[k]) + self._Q[k]) / (self._N[k] + 1.0)
+
+            # exploration term
             curvl += self._lambda * math.sqrt(math.log(SN) / (self._N[k] + 1.0))
 
             if curvl > bvl:
                 bid = k
                 bvl = curvl
+
         return bid
 
     def add_prior(self, prior):
@@ -162,6 +174,7 @@ class Node:
             SN += self._N[k]
         S = []
         for k in range(self._action_size):
+            #TODO verify if this equation gives better results than eq. (4) in the paper.
             curvl = (self._P[k] + self._Q[k]) / (self._N[k] + 1.0)
             curvl += self._lambda * math.sqrt(math.log(SN) / (self._N[k] + 1.0))
             S.append(curvl)
@@ -278,12 +291,17 @@ class Tree:
         '''
         curnode = self._root
         bestid = -1
+
         while True:
+
             bestid = curnode.get_max()
+
             if bestid == -1:
                 return curnode
+
             if curnode._child[bestid] == None:
                 return curnode
+
             else:
                 curnode = curnode._child[bestid]
 
@@ -349,17 +367,17 @@ class Tree:
             Notice that for each node a penalty is given to balance training efficiency and effectiveness as stated at the
             end of page 3 in the paper.
             Args:
-                node: The leaf node for which we have obtained a new value estimate.
-                action: The action that we have taken from the leaf node to generate a new node.
-                value: The Q value estimate obtained from the learning module for the leaf node.
+                node: The leaf node of the current MCT search which has been extended.
+                action: The action that we have taken from the leaf node to generate the NEW node.
+                value: The score of the NEW NODE on the downstream task.
                 penalty: the penalty that balances the effectiveness and efficacy of the algorithm.
 
             Returns: a list of samples where each sample is a tuple containing 3 inner tuples:
             1. (s_t,a_t)
-            2. (s_t+1, a_t+1)
-            3. not a tuple but an scalar: R_t + Q_l(s_t+1, a_t+1)  - penalty
+            2. (s_{t+1}, a_{t+1})
+            3. not a tuple but a scalar: R_t + Q_l(s_{t+1}, a_{t+1})  - penalty
 
-            The samples correspond to the tree traversal path realized.
+            The samples will be taken from the current backward tree traversal.
             These samples, IN THIS ORDER, might turn useful to update the experience memory of the learning module and drive the
             optimization of the parameters of the RNN that approximates the Q_l function, using eq. (6) in the paper.
             '''
@@ -371,39 +389,79 @@ class Tree:
 
         while current_node != None:
 
+            # given a current_node, next_node will be the child that was generated from it
+            # in the current tree traversal.
             next_node = current_node._child[current_action]
 
             if current_node is node:
+                # current_node is the leaf node of the current MCTS.
+                # we substract to "value" (i.e. the raw score of the embedding of the NEW node)
+                # the _base value of the leaf node
+                # (i.e. the score of the embedding of the leaf node) and the penalty
+                # THIS GAIN IS THE DEFINITION OF REWARD IN OUR MDP
                 gain = value - current_node._base - penalty
+                # we add this reward to the
+                # lookup Q value for the current action of the leaf node, following the MCTS algorithm
                 current_node._Q[current_action] += gain
+                # increment the visit count
                 current_node._N[current_action] += 1
 
+                current_pair = [current_node._act, current_action]
 
                 next_pair = [None, None]
+                # NOTICE that the REWARD is going to be the target for the estimations of the learning module NN
                 sample_list.append([current_pair, next_pair, gain])
+
             else:
+                # notiche that "short_gain" is exactly the same thing of "gain" at the internal of the previous if clause:
+                # it is the definition of REWARD in our MDP
                 short_gain = value - current_node._base - penalty
+
+                # recall that next node is the child of current_node
+                # long gain is its EMPIRIC expected return (with the visit count discount)
                 long_gain = next_node._Q[next_action] / next_node._N[next_action]
+
+                #so we have more precise estimates for this Q value
                 gain = short_gain + long_gain
+
+                #we add them to the current estimate, following the MCTS algorithm
                 current_node._Q[current_action] += gain
+
+                # increment the visit count
                 current_node._N[current_action] += 1
 
                 current_pair = [current_node._act, current_action]
                 next_pair = [next_node._act, next_action]
+
+                # NOTICE that the REWARD is going to be the target for the estimations of the learning module NN
                 sample_list.append([current_pair, next_pair, short_gain])
 
+            # value will contain the immediate reward that the embedding of current_node received when
+            # the downstream task was performed on it.
             value = current_node._base
+
             next_action = current_action
+
+            # current_action will contain the action that generated the current_node
             current_action = current_node._lact
+
+            # now current_node is exchanged with its PARENT node (so we are doing a backward traversal)
+            # and the current_action  variable will contain the action taken to generate its child
+            # and the and value variable wil contain the immediate reward obtained
+            # for its embedding, so we reproduce the initial conditions of the loop.
             current_node = current_node._parent
+
+
         return sample_list
 
 
     def derive(self, action):
         '''
         Removes a specific action from the action space of the tree,
-        This implies removing the root node of the tree and placing the corresponding action node form tha root as the new root.
-        For every child node, the paths concerning the specified action are deleted from the tree.
+        This implies removing the root node of the tree and placing the corresponding action node form that old root as the new root.
+        Notice that a new root is formatted by putting last action to -1, parent to None and the action array as an empty array,
+        For every child node, the first action, which corresponds to the action that generated the current new root are deleted from the
+         action array.
         Args:
             action: -1 if the current root node has not explored the specified action.
             1 if the current root node has explored the specified action and all the removing process has been done
@@ -446,14 +504,15 @@ class Tree:
         '''
 
         Args:
-            node_id: 1 if the specific node id in input corresponds to a node of the current Tree and 0 otherwise.
+            node_id: node id to search inside the Tree.
+        Returns: 1 if the specific node id in input corresponds to a node of the current Tree and 0 otherwise.
 
-        Returns:
 
         '''
         for k in range(len(self._nodes)):
             if self._nodes[k]._id is node_id:
                 return 1
+
         return 0
 
     def print_info(self):

@@ -44,6 +44,8 @@ class RNNRegression(nn.Module):
         if rnn_type == 'rnn':
             self.rnn = nn.RNN(emb_size, emb_size, nonlinearity='relu')
         if rnn_type == 'lstm':
+            # notice we are not using bi.directional lstms, and that we are not stacking more than
+            # 1 layer.
             self.rnn = nn.LSTM(emb_size, emb_size)
 
         self.syn = nn.Linear(2 * emb_size, hidden_size)
@@ -70,6 +72,7 @@ class RNNRegression(nn.Module):
             return Variable(torch.zeros(1, 1, self.emb_size))
 
         if self.rnn_type == 'lstm':
+            #we initialize the hidden state and the cell state.
             return (Variable(torch.zeros(1, 1, self.emb_size)), Variable(torch.zeros(1, 1, self.emb_size)))
 
 
@@ -88,11 +91,20 @@ class RNNRegression(nn.Module):
         state = Variable(torch.LongTensor(state))
         action = Variable(torch.LongTensor([action]))
         emb_state = self.en_state(state)
+        # the first dimension is the index corresponds to the sequence length.
+        # the second to the batch, (Notice we are not doing batch learning)
+        # the third is autoexplainable.
         emb_state = emb_state.view(-1, 1, self.emb_size)
+
         out, hidden = self.rnn(emb_state, hidden)
+
         if self.rnn_type == 'rnn':
             vec_state = hidden.view(-1)
         if self.rnn_type == 'lstm':
+            # in the case of an lstm, hidden is a tuple containing JUST the
+            # FINAL hidden state and the FINAL cell state of stacked layer of each batch
+            # (we have just 1 layer and 1 batch!)
+            # normally it comes with three dimensions (num of layers, num of batches, hidden_size)
             vec_state = hidden[0].view(1, -1)
         vec_action = self.en_action(action)
         vec = torch.cat([vec_state, vec_action], dim=1)
@@ -127,5 +139,8 @@ class RNNRegression(nn.Module):
     def predict(self, state, action):
 
         output = self.forward(state, action)[0]
-
+        #Take only the output, not the hidden state,
+        # Take the inner value of the output vector,
+        # which has dimension (1, output_dim) because of the
+        # batch
         return output.data.numpy()[0, 0]
