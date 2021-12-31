@@ -213,8 +213,7 @@ def get_kendall_matrix():
     gene_trend_upright_submatrix = np.repeat(gene_exp_slopes.reshape(1, -1), ccre_count).reshape(ge_count, -1)
     kendall_matrix[:ge_count, ge_count:] = torch.Tensor(gene_trend_upright_submatrix + ccre_trend_upright_submatrix)
 
-    gene_trend_downleft_submatrix = np.repeat(gene_exp_slopes.reshape(-1, 1), ccre_count).reshape(-1,
-                                                                                                  ccre_count).transpose()
+    gene_trend_downleft_submatrix = np.repeat(gene_exp_slopes.reshape(-1, 1), ccre_count).reshape(-1,ccre_count).transpose()
     ccre_trend_downleft_submatrix = np.repeat(ccre_slopes.reshape(1, -1), ge_count).reshape(ccre_count, -1)
     kendall_matrix[ge_count:, :ge_count] = torch.Tensor(gene_trend_downleft_submatrix + ccre_trend_downleft_submatrix)
     kendall_matrix.abs_()
@@ -320,6 +319,7 @@ def get_primitive_clusters(link_ds, ccre_ds):
 
 
 def load_data(datapath, num_of_genes=0, tight=True, chr_to_filter=None):
+
     if tight:
         var_log_ge_ds = pd.read_csv(datapath + 'tight_var_log_fpkm_GE_ds')
     else:
@@ -385,6 +385,8 @@ def get_primitive_gene_clusters():
     prim_gene_ds = gene_ds.join(primitive_ge_clustered_ds)['primitive_cluster'].reset_index()
 
     return np.array(prim_gene_ds.primitive_cluster.to_list())
+
+
 
 
 #####
@@ -500,6 +502,7 @@ class AdaGAE():
         classes = ['gene', 'ccre']
         self.class_label_array = np.array([classes[0]] * ge_count + [classes[1]] * ccre_count)
 
+
     def reset(self):
         self.iteration = 0
         self.gae_nn = None
@@ -545,6 +548,7 @@ class AdaGAE():
         # notice we could also put norm_adj into the cpu here...
         torch.cuda.empty_cache()
 
+
     def init_embedding(self):
         with torch.no_grad():
             # initilalizes self.gae_nn.embedding:
@@ -552,6 +556,7 @@ class AdaGAE():
             _ = self.gae_nn(self.norm_adj.to(device))
             _ = None
             torch.cuda.empty_cache()
+
 
     def update_graph(self):
         self.adj, self.raw_adj = self.cal_weights_via_CAN(self.gae_nn.embedding.t())
@@ -562,6 +567,7 @@ class AdaGAE():
         # weights = weights * connections
         self.norm_adj = get_normalized_adjacency_matrix(self.adj)
         return self.adj, self.norm_adj, self.raw_adj
+
 
     def build_loss(self, recons):
 
@@ -804,6 +810,7 @@ class AdaGAE():
         gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = 0, 0, 0, 0, 0, 0
 
         if clusterize and self.current_cluster_number < 30:
+
             gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = self.clustering()
             tensorboard.add_scalar(GE_CC_SCORE_TAG, gene_cc_score, self.global_step)
             tensorboard.add_scalar(CCRE_CC_SCORE_TAG, ccre_cc_score, self.global_step)
@@ -852,10 +859,10 @@ class AdaGAE():
             mean_loss = sum(self.epoch_losses) / len(self.epoch_losses)
             print('epoch:%3d,' % epoch, 'loss: %6.5f' % mean_loss)
 
+
     def get_dinamic_param(self, init_value, final_value):
         T = max_epoch * max_iter
-        return init_value + (
-                    (final_value - init_value) * (1 / (1 + math.e ** (-1 * (self.iteration - (T / 2)) / (T / 10)))))
+        return init_value + ((final_value - init_value) * (1 / (1 + math.e ** (-1 * (self.iteration - (T/ 2)) / (T/10)))))
 
     def cal_weights_via_CAN(self, transposed_data_matrix):
         """
@@ -865,7 +872,7 @@ class AdaGAE():
         size = transposed_data_matrix.shape[1]
 
         distances = distance(transposed_data_matrix, transposed_data_matrix)
-        if not eval: tensorboard.add_scalar(EMBEDDING_DIAMETER, distances.median() * (1e5), self.global_step)
+        if not eval: tensorboard.add_scalar(EMBEDDING_DIAMETER, distances.median(), self.global_step)
         distances = torch.max(distances, torch.t(distances))
         sorted_distances, _ = distances.sort(dim=1)
 
@@ -956,8 +963,8 @@ class AdaGAE():
 
         assert not np.isnan(weights.detach().cpu().numpy().sum())
 
-        weights = (weights * (1 - self.current_genetic_balance_factor)) + (
-                    scaled_link_scores * self.current_genetic_balance_factor)
+        weights = (weights * (1 - self.current_genetic_balance_factor)) +  (scaled_link_scores * self.current_genetic_balance_factor)
+
 
         if not add_self_loops_euclidean:
             # self-loop avoidance (changed to basic GNN model as in hamilton's book)
@@ -979,6 +986,7 @@ class AdaGAE():
 
         return weights, raw_weights
 
+
     def clustering(self):
 
         cpu_embedding = self.gae_nn.embedding.detach().cpu().numpy()
@@ -988,6 +996,7 @@ class AdaGAE():
         # self.current_prediction = clusterer.fit_predict(cpu_embedding)
 
         return self.cal_clustering_metric()
+
 
     def plot_clustering(self, bi_dim_embedding=None, title=None):
 
@@ -1017,6 +1026,7 @@ class AdaGAE():
         if not eval:
             self.send_image_to_tensorboard(plt, UMAP_CLUSTER_PLOT_TAG)
         plt.show()
+
 
     def plot_classes(self, bi_dim_embedding=None, only_ccres=False, title=None):
 
@@ -1057,6 +1067,7 @@ class AdaGAE():
             self.send_image_to_tensorboard(plt, UMAP_CLASS_PLOT_TAG)
         plt.show()
 
+
     def send_image_to_tensorboard(self, plt, tag):
         buf = io.BytesIO()
         plt.savefig(buf, format='jpeg')
@@ -1064,6 +1075,7 @@ class AdaGAE():
         image = PIL.Image.open(buf)
         image = ToTensor()(image).squeeze(0)
         tensorboard.add_image(tag, image, self.global_step)
+
 
     def visual_eval(self, n_neighbors=30, min_dist=0):
 
@@ -1149,7 +1161,6 @@ def manual_run():
           gae.plot_classes()
 
     print('gae.current_cluster_number', gae.current_cluster_number)
-
 
 
 ###########
