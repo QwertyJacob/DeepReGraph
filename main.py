@@ -142,6 +142,7 @@ def get_hybrid_feature_matrix(link_ds, ccre_ds):
 
 
 def get_kendall_matrix():
+
     numpy_X = X.cpu().numpy()
 
     time_steps = np.array([0, 1, 2, 3, 4, 5, 6, 7])
@@ -519,10 +520,10 @@ class AdaGAE():
         self.current_rq_loss_weight = init_RQ_loss_weight
         self.current_cluster_number = math.ceil((ge_count + ccre_count) / self.current_sparsity)
         self.init_adj_matrices()
+        self.current_attractive_loss_weight = init_attractive_loss_weight
         self.current_repulsive_loss_weight = init_repulsive_loss_weight
-        # self.current_attractive_ce_loss_weight = init_attractive_loss_weight
-        # self.current_lambda_attractive = init_lambda_attractive
         self.current_lambda_repulsive = init_lambda_repulsive
+        self.current_lambda_attractive = init_lambda_attractive
         if not self.pre_trained: self.init_embedding()
 
     def init_adj_matrices(self):
@@ -575,8 +576,23 @@ class AdaGAE():
         # and that raw_adj is the p distribution. (before the symmetrization)
         '''
 
-        # This acts as a REPULSIVE force for the embedding learning:
-        repulsive_CE_term = -(self.raw_adj * torch.log(recons + 10 ** -10))
+        # The following acts as an ATTRACTIVE force for the embedding learning:
+        attractive_CE_term = -(self.raw_adj * torch.log(recons + 10 ** -10))
+
+        attractive_CE_term[:ge_count] *= self.current_lambda_attractive
+        attractive_CE_term[ge_count:] *= (1 - self.current_lambda_attractive)
+
+        attractive_CE_term = attractive_CE_term.sum(dim=1)
+        attractive_CE_term = attractive_CE_term.mean()
+
+        tensorboard.add_scalar(ATTRACTIVE_CE_TERM, attractive_CE_term.item(), self.global_step)
+
+
+        # If we use the Fuzzy Cross Entropy. (Binary cross entropy)
+        # We could create a REPULSIVE force
+        # https://towardsdatascience.com/how-exactly-umap-works-13e3040e1668
+        repulsive_CE_term = -(1 - self.raw_adj) * torch.log(1-recons)
+
 
         repulsive_CE_term[:ge_count] *= self.current_lambda_repulsive
         repulsive_CE_term[ge_count:] *= (1 - self.current_lambda_repulsive)
@@ -584,39 +600,26 @@ class AdaGAE():
         repulsive_CE_term = repulsive_CE_term.sum(dim=1)
         repulsive_CE_term = repulsive_CE_term.mean()
 
+
         tensorboard.add_scalar(REPULSIVE_CE_TERM, repulsive_CE_term.item(), self.global_step)
 
-        '''
-        # If we use the Fuzzy Cross Entropy. (Binary cross entropy)
-        # We could create an ATTRACTIVE force
-        # https://towardsdatascience.com/how-exactly-umap-works-13e3040e1668
-        attractive_CE_term = -(1 - self.raw_adj) * torch.log(1-recons)
 
-        if differential_attractive_forces:
-            attractive_CE_term[:ge_count] *= self.current_lambda_attractive
-            attractive_CE_term[ge_count:] *= (1 - self.current_lambda_attractive)
-
-        attractive_CE_term = attractive_CE_term.sum(dim=1)
-        attractive_CE_term = attractive_CE_term.mean()
-
-
-        tensorboard.add_scalar(ATTRACTIVE_CE_TERM, attractive_CE_term.item(), self.global_step)
-        '''
-
-        # This loss acts as an attractive force for the embedding:
+        # The RQ loss acts as an attractive force for the embedding:
         # It strengthens element-wise similarities
         degree = self.adj.sum(dim=1)
         laplacian = torch.diag(degree) - self.adj
 
-        # This is exactly equation 11 in the AdaGAE paper.
+
         # Notice that torch.trace return the sum of the elements in the diagonal of the input matrix.
         rayleigh_quotient_loss = torch.trace(
             self.gae_nn.embedding.t().matmul(laplacian).matmul(self.gae_nn.embedding)) / size
 
         tensorboard.add_scalar(RQ_QUOTIENT_LOSS, rayleigh_quotient_loss.item(), self.global_step)
 
+        # If we dont consider the repulsive fuzzy CE term, the following would
+        # be exactly equation (11) in the AdaGAE paper.
+        loss += self.current_attractive_loss_weight * attractive_CE_term
         loss += self.current_repulsive_loss_weight * repulsive_CE_term
-        # loss += self.current_attractive_ce_loss_weight * attractive_CE_term
         loss += self.current_rq_loss_weight * rayleigh_quotient_loss
 
         tensorboard.add_scalar(TOTAL_LOSS_LABEL, loss.item(), self.global_step)
@@ -642,17 +645,21 @@ class AdaGAE():
             cluster_labels = cluster_labels[1:]
 
         for k in cluster_labels:
+
             gene_cluster_mask = (self.current_prediction == k)[:ge_count]
             ccre_cluster_mask = (self.current_prediction == k)[ge_count:]
             current_distance_score_matrix = distance_score_matrix[gene_cluster_mask, :]
             current_distance_score_matrix = current_distance_score_matrix[:, ccre_cluster_mask]
             # If we have an "only ccres" or "only genes" cluster, we put distance score directly to zero
             distance_score = 0
+
             if current_distance_score_matrix.shape[0] != 0 and current_distance_score_matrix.shape[1] != 0:
                 # Notice that when the clusters are bigger, then it will be more difficult
                 # to reach a good distance score. That is why we now give a  normalization factor:
-                cluster_dim = current_distance_score_matrix.shape[0] + current_distance_score_matrix.shape[1]
-                distance_score = current_distance_score_matrix.mean() * (cluster_dim ** 0.3)
+                # cluster_dim = current_distance_score_matrix.shape[0] + current_distance_score_matrix.shape[1]
+                # distance_score = current_distance_score_matrix.mean() * (cluster_dim ** 0.3)
+                distance_score = current_distance_score_matrix.mean()
+
             distance_scores.append(distance_score)
 
         if len(distance_scores) == 0:
@@ -681,20 +688,24 @@ class AdaGAE():
             mean_heterogeneity = sum(cluster_heterogeneities) / len(cluster_heterogeneities)
             return mean_heterogeneity
 
+
     def get_mean_cluster_conciseness(self, data_points, labels):
 
         cluster_concisenesses = []
         cluster_labels = np.unique(labels)
 
         for k in cluster_labels:
+
             cluster_k_components = data_points[labels == k]
             centroid_k = np.mean(cluster_k_components, axis=0)
             dispersion_vectors_k = (cluster_k_components - centroid_k) ** 2
 
             gene_dispersions_k = np.sum(dispersion_vectors_k, axis=1)
             gene_diameter_k = gene_dispersions_k.max()
+
             if gene_diameter_k == 0:
                 mean_scaled_gene_dispersion_k = 0
+
             else:
                 scaled_gene_dispersions_k = gene_dispersions_k / gene_diameter_k
                 mean_scaled_gene_dispersion_k = scaled_gene_dispersions_k.mean()
@@ -702,8 +713,10 @@ class AdaGAE():
 
         if len(cluster_concisenesses) == 0:
             return 0
+
         else:
             return sum(cluster_concisenesses) / len(cluster_concisenesses)
+
 
     def get_raw_score(self):
 
@@ -758,11 +771,18 @@ class AdaGAE():
         tensorboard.add_scalar(GENETIC_BALANCE_FACTOR_LABEL, float(self.current_genetic_balance_factor),
                                self.global_step)
 
-        self.current_repulsive_loss_weight = action[3]
+        self.current_attractive_loss_weight = action[3]
+        tensorboard.add_scalar(ATTRACTIVE_CE_LOSS_WEIGHT_LABEL, self.current_attractive_loss_weight, self.global_step)
+
+        self.current_lambda_attractive = action[4]
+        tensorboard.add_scalar(LAMBDA_ATTRACTIVE_LABEL, self.current_lambda_attractive, self.global_step)
+
+        self.current_repulsive_loss_weight = action[5]
         tensorboard.add_scalar(REPULSIVE_CE_LOSS_WEIGHT_LABEL, self.current_repulsive_loss_weight, self.global_step)
 
-        self.current_lambda_repulsive = action[4]
+        self.current_lambda_repulsive = action[6]
         tensorboard.add_scalar(LAMBDA_REPULSIVE_LABEL, self.current_lambda_repulsive, self.global_step)
+
 
         if (self.current_sparsity != prev_sparsity) or (self.current_genetic_balance_factor != prev_gbf):
             self.update_graph()
@@ -815,16 +835,16 @@ class AdaGAE():
             current_rq_loss_weight = self.get_dinamic_param(init_RQ_loss_weight, final_RQ_loss_weight)
             current_sparsity = self.current_sparsity + sparsity_increment
             current_genetic_balance_factor = self.get_dinamic_param(init_gbf, final_gbf)
-            current_repulsive_loss_weight = self.get_dinamic_param(init_repulsive_loss_weight,
-                                                                   final_repulsive_loss_weight)
-            current_lambda_repulsive = self.get_dinamic_param(init_lambda_repulsive, final_lambda_repulsive)
+            current_repulsive_loss_weight = self.get_dinamic_param(init_attractive_loss_weight,
+                                                                   final_attractive_loss_weight)
+            current_lambda_attractive = self.get_dinamic_param(init_lambda_attractive, final_lambda_attractive)
 
             for i in range(max_iter):
                 dummy_action = torch.Tensor([current_rq_loss_weight,
                                              current_sparsity,
                                              current_genetic_balance_factor,
                                              current_repulsive_loss_weight,
-                                             current_lambda_repulsive]).to(self.device)
+                                             current_lambda_attractive]).to(self.device)
 
                 reward, loss, done_flag = self.step(dummy_action)
                 self.epoch_losses.append(loss.item())
@@ -889,6 +909,8 @@ class AdaGAE():
         torch.cuda.empty_cache()
 
         weights = weights_diff.relu().to(self.device)
+
+
         '''
         # distance to the k-th nearest neighbor:
         top_k = sorted_distances[:, self.current_sparsity]
@@ -947,9 +969,11 @@ class AdaGAE():
         torch.cuda.empty_cache()
         # UN-symmetric connectivity distribution
         raw_weights = weights.clone()
-        # Symmetrization of the connectivity distribution
 
+        # Symmetrization of the connectivity distribution
         weights = (weights + weights.t()) / 2
+
+
         raw_weights = raw_weights.to(device)
         weights = weights.to(device)
 
@@ -1071,6 +1095,63 @@ def save(epoch):
     torch.save(gae.gae_nn.embedding, datapath + 'models' + modelname + '_embedding_' + str(epoch) + '_epochs')
 
 
+@profile(output_file='profiling_adagae')
+def manual_run():
+
+    global epoch
+    global current_sparsity
+
+    for epochsita in tqdm(range(max_epoch)):
+        epoch += 1
+        current_sparsity += sparsity_increment
+
+        current_genetic_balance_factor = gae.get_dinamic_param(init_gbf, final_gbf)
+        current_rq_loss_weight = gae.get_dinamic_param(init_RQ_loss_weight, final_RQ_loss_weight)
+
+        current_attractive_loss_weight = gae.get_dinamic_param(init_attractive_loss_weight,
+                                                               final_attractive_loss_weight)
+
+        current_repulsive_loss_weight = gae.get_dinamic_param(init_repulsive_loss_weight,
+                                                               final_repulsive_loss_weight)
+
+        current_lambda_attractive = gae.get_dinamic_param(init_lambda_attractive,
+                                                         final_lambda_attractive)
+
+        current_lambda_repulsive = gae.get_dinamic_param(init_lambda_repulsive,
+                                                        final_lambda_repulsive)
+
+        gae.epoch_losses = []
+
+        for i in range(max_iter):
+            dummy_action = torch.Tensor([current_rq_loss_weight,
+                                         current_sparsity,
+                                         current_genetic_balance_factor,
+                                         current_attractive_loss_weight,
+                                         current_lambda_attractive,
+                                         current_repulsive_loss_weight,
+                                         current_lambda_repulsive]).to(device)
+
+            reward, loss, done_flag = gae.step(dummy_action)
+            print(reward)
+            gae.epoch_losses.append(loss.item())
+
+        mean_loss = sum(gae.epoch_losses) / len(gae.epoch_losses)
+        print('epoch:%3d,' % epoch,
+              'gbf: %6.3f' % current_genetic_balance_factor,
+              'rep: %6.3f' % current_attractive_loss_weight,
+              'attr: %6.3f' % current_rq_loss_weight,
+              'spars:%3d, ' % gae.current_sparsity,
+              'curr_clust_num:%3d,' % gae.current_cluster_number )
+        if layers[-1] > 2:
+          if epochsita%10==0:
+            gae.plot_classes()
+        else:
+          gae.plot_classes()
+
+    print('gae.current_cluster_number', gae.current_cluster_number)
+
+
+
 ###########
 ## HYPER-PARAMS
 ###########
@@ -1079,7 +1160,7 @@ def save(epoch):
 plt.rcParams["figure.figsize"] = (10, 10)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-genes_to_pick = 200
+genes_to_pick = 20
 add_self_loops_genomic = False
 add_self_loops_euclidean = False
 
@@ -1093,45 +1174,38 @@ links = get_genomic_distance_matrix(link_ds)
 
 ge_class_labels = ['genes_' + str(ge_cluster_label) for ge_cluster_label in get_primitive_gene_clusters()]
 print('Analyzing ', ge_count, ' genes and ', ccre_count, ' ccres for a total of ', ge_count + ccre_count, ' elements.')
-
+print('cCREs over Gene ratio is ', ccre_count/ge_count)
 kendall_matrix = get_kendall_matrix()
 
 X /= torch.max(X)
 X = torch.Tensor(X).to(device)
+
+## Fixed Hyper params
 input_dim = X.shape[1]
 layers = [input_dim, 12, 2]
 
+eval = False
+pre_trained = False
+gcn = False
+clusterize = True
+use_kendall_matrix = True
 
-###
-###
-
-
-###
-
-
-
-
-###
+learning_rate = 5 * 10 ** -3
+init_genomic_C = 3e5
+init_genomic_slope = 0.4
 
 
 if __name__ == '__main__':
 
-    eval = False
-    pre_trained = False
-    gcn = False
-    hdbscan_min_cluster_size = 40
-    hdbscan_min_samples = 5
-    clusterize = False
-    use_kendall_matrix = True
 
-    learning_rate = 5 * 10 ** -3
-    init_genomic_C = 3e5
-    init_genomic_slope = 0.4
 
     current_sparsity = init_sparsity = 10
 
     init_gbf = 0.5
     final_gbf = 0.1
+
+    init_attractive_loss_weight = 0.1
+    final_attractive_loss_weight = 2
 
     init_repulsive_loss_weight = 2
     final_repulsive_loss_weight = 0.1
@@ -1139,7 +1213,8 @@ if __name__ == '__main__':
     init_RQ_loss_weight = .1
     final_RQ_loss_weight = 1.5
 
-    current_lambda_repulsive = init_lambda_repulsive = 0.6
+    init_lambda_attractive = final_lambda_attractive = 0.6
+    init_lambda_repulsive = final_lambda_repulsive = 0.5
 
     modelname = '/champion'
     tensorboard = SummaryWriter(LOG_DIR + modelname)
@@ -1154,51 +1229,13 @@ if __name__ == '__main__':
                  device=device,
                  pre_trained=False)
 
-
-    ###
-    ###
-
-    @profile(output_file='profiling_adagae')
-    def manual_run():
-
-        global epoch
-        global current_sparsity
-
-        for epochsita in tqdm(range(max_epoch)):
-            epoch += 1
-            current_sparsity += sparsity_increment
-            current_genetic_balance_factor = gae.get_dinamic_param(init_gbf, final_gbf)
-            current_rq_loss_weight = gae.get_dinamic_param(init_RQ_loss_weight, final_RQ_loss_weight)
-            current_repulsive_loss_weight = gae.get_dinamic_param(init_repulsive_loss_weight,
-                                                                  final_repulsive_loss_weight)
-            gae.epoch_losses = []
-
-            for i in range(max_iter):
-                dummy_action = torch.Tensor([current_rq_loss_weight,
-                                             current_sparsity,
-                                             current_genetic_balance_factor,
-                                             current_repulsive_loss_weight,
-                                             current_lambda_repulsive]).to(device)
-
-                reward, loss, done_flag = gae.step(dummy_action)
-                print(reward)
-                gae.epoch_losses.append(loss.item())
-
-            mean_loss = sum(gae.epoch_losses) / len(gae.epoch_losses)
-            print('epoch:%3d,' % epoch, 'loss: %6.5f' % mean_loss)
-
-        print('gae.current_cluster_number', gae.current_cluster_number)
-
-
     manual_run()
-    ##
+
 
 '''
 ###
 ###DUMMY RUN
 ###
-
-
 
 max_iter = 20
 max_epoch = 20
@@ -1214,12 +1251,6 @@ final_RQ_loss_weight = 0
 differential_repulsive_forces = True
 init_lambda_repulsive = 0.5
 final_lambda_repulsive = 0.5
-
-
-
-################
-##############
-
 
 
 modelname = '/non_diff_RQ'
