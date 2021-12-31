@@ -61,7 +61,7 @@ import io
 import math
 import PIL.Image
 from torchvision.transforms import ToTensor
-import hdbscan
+# import hdbscan
 from sklearn.cluster import KMeans
 from sklearn.utils import _safe_indexing
 from sklearn import linear_model
@@ -399,6 +399,7 @@ SLOPE_LABEL: str = 'GeneticSlope'
 REPULSIVE_CE_TERM: str = 'Repulsive_CE_loss'
 ATTRACTIVE_CE_TERM: str = 'Attractive_CE_loss'
 RQ_QUOTIENT_LOSS: str = 'RQ Quotient Loss'
+RP_AGGRESSIVE_LOSS: str = 'Rep Aggressive Loss'
 TOTAL_LOSS_LABEL: str = 'Total_Loss'
 RQ_LOSS_WEIGHT: str = 'RQ_Loss_weight'
 GENETIC_BALANCE_FACTOR_LABEL: str = 'GeneticBalanceFactor'
@@ -521,6 +522,7 @@ class AdaGAE():
         self.current_genomic_C = init_genomic_C
         self.current_genetic_balance_factor = init_gbf
         self.current_rq_loss_weight = init_RQ_loss_weight
+        self.current_rep_agg_loss_weight = init_agg_repulsive
         self.current_cluster_number = math.ceil((ge_count + ccre_count) / self.current_sparsity)
         self.init_adj_matrices()
         self.current_attractive_loss_weight = init_attractive_loss_weight
@@ -622,12 +624,16 @@ class AdaGAE():
 
         tensorboard.add_scalar(RQ_QUOTIENT_LOSS, rayleigh_quotient_loss.item(), self.global_step)
 
+
+        repulsive_aggressive_loss = torch.sum((1-self.raw_adj) * recons)
+        tensorboard.add_scalar(RP_AGGRESSIVE_LOSS, repulsive_aggressive_loss.item(), self.global_step)
+
         # If we dont consider the repulsive fuzzy CE term, the following would
         # be exactly equation (11) in the AdaGAE paper.
         loss += self.current_attractive_loss_weight * attractive_CE_term
         loss += self.current_repulsive_loss_weight * repulsive_CE_term
         loss += self.current_rq_loss_weight * rayleigh_quotient_loss
-
+        loss += self.current_rep_agg_loss_weight * repulsive_aggressive_loss
         tensorboard.add_scalar(TOTAL_LOSS_LABEL, loss.item(), self.global_step)
 
         self.adj.to('cpu')
@@ -789,6 +795,8 @@ class AdaGAE():
         self.current_lambda_repulsive = action[6]
         tensorboard.add_scalar(LAMBDA_REPULSIVE_LABEL, self.current_lambda_repulsive, self.global_step)
 
+        self.current_rep_agg_loss_weight = action[7]
+        tensorboard.add_scalar(RP_AGGRESSIVE_LOSS, self.current_rep_agg_loss_weight, self.global_step)
 
         if (self.current_sparsity != prev_sparsity) or (self.current_genetic_balance_factor != prev_gbf):
             self.update_graph()
@@ -1132,6 +1140,9 @@ def manual_run():
         current_lambda_repulsive = gae.get_dinamic_param(init_lambda_repulsive,
                                                         final_lambda_repulsive)
 
+        current_aggresive_rep_loss_weight = gae.get_dinamic_param(init_agg_repulsive,
+                                                        final_agg_repulsive)
+
         gae.epoch_losses = []
 
         for i in range(max_iter):
@@ -1141,7 +1152,8 @@ def manual_run():
                                          current_attractive_loss_weight,
                                          current_lambda_attractive,
                                          current_repulsive_loss_weight,
-                                         current_lambda_repulsive]).to(device)
+                                         current_lambda_repulsive,
+                                         current_aggresive_rep_loss_weight]).to(device)
 
             reward, loss, done_flag = gae.step(dummy_action)
             print(reward)
@@ -1150,8 +1162,10 @@ def manual_run():
         mean_loss = sum(gae.epoch_losses) / len(gae.epoch_losses)
         print('epoch:%3d,' % epoch,
               'gbf: %6.3f' % current_genetic_balance_factor,
-              'rep: %6.3f' % current_attractive_loss_weight,
-              'attr: %6.3f' % current_rq_loss_weight,
+              'CE_attr_w: %6.3f' % current_attractive_loss_weight,
+              'CE_rep_w: %6.3f' % current_repulsive_loss_weight,
+              'RQ_w: %6.3f' % current_rq_loss_weight,
+              'AR_w: %6.3f' % current_aggresive_rep_loss_weight,
               'spars:%3d, ' % gae.current_sparsity,
               'curr_clust_num:%3d,' % gae.current_cluster_number )
         if layers[-1] > 2:
@@ -1204,7 +1218,7 @@ use_kendall_matrix = True
 learning_rate = 5 * 10 ** -3
 init_genomic_C = 3e5
 init_genomic_slope = 0.4
-
+rep_agg_loss_weight = 1
 
 if __name__ == '__main__':
 
@@ -1223,6 +1237,9 @@ if __name__ == '__main__':
 
     init_RQ_loss_weight = .1
     final_RQ_loss_weight = 1.5
+
+    init_agg_repulsive = 0
+    final_agg_repulsive = 1
 
     init_lambda_attractive = final_lambda_attractive = 0.6
     init_lambda_repulsive = final_lambda_repulsive = 0.5
