@@ -1177,6 +1177,59 @@ def manual_run():
     print('gae.current_cluster_number', gae.current_cluster_number)
 
 
+def fixed_spars_run():
+    global epoch
+    global current_sparsity
+
+    for epochsita in tqdm(range(max_epoch)):
+        epoch += 1
+
+        current_genetic_balance_factor = gae.get_dinamic_param(init_gbf, final_gbf)
+        current_rq_loss_weight = gae.get_dinamic_param(init_RQ_loss_weight, final_RQ_loss_weight)
+
+        current_attractive_loss_weight = gae.get_dinamic_param(init_attractive_loss_weight,
+                                                               final_attractive_loss_weight)
+
+        current_repulsive_loss_weight = gae.get_dinamic_param(init_repulsive_loss_weight,
+                                                              final_repulsive_loss_weight)
+
+        current_lambda_attractive = gae.get_dinamic_param(init_lambda_attractive,
+                                                          final_lambda_attractive)
+
+        current_lambda_repulsive = gae.get_dinamic_param(init_lambda_repulsive,
+                                                         final_lambda_repulsive)
+
+        current_aggresive_rep_loss_weight = gae.get_dinamic_param(init_agg_repulsive,
+                                                                  final_agg_repulsive)
+
+        gae.epoch_losses = []
+
+        for i in range(max_iter):
+            dummy_action = torch.Tensor([current_rq_loss_weight,
+                                         current_sparsity,
+                                         current_genetic_balance_factor,
+                                         current_attractive_loss_weight,
+                                         current_lambda_attractive,
+                                         current_repulsive_loss_weight,
+                                         current_lambda_repulsive,
+                                         current_aggresive_rep_loss_weight]).to(device)
+
+            reward, loss, done_flag = gae.step(dummy_action)
+            print(reward)
+            gae.epoch_losses.append(loss.item())
+
+            print('epoch:%3d,' % epoch,
+                  'gbf: %6.3f' % current_genetic_balance_factor,
+                  'CE_attr_w: %6.3f' % current_attractive_loss_weight,
+                  'CE_rep_w: %6.3f' % current_repulsive_loss_weight,
+                  'RQ_w: %6.3f' % current_rq_loss_weight,
+                  'AR_w: %6.3f' % current_aggresive_rep_loss_weight,
+                  'spars:%3d, ' % gae.current_sparsity,
+                  'curr_clust_num:%3d,' % gae.current_cluster_number)
+
+            if i % 10 == 0:
+                gae.plot_classes()
+
 ###########
 ## HYPER-PARAMS
 ###########
@@ -1257,8 +1310,8 @@ if __name__ == '__main__':
                  device=device,
                  pre_trained=False)
 
-    manual_run()
-
+    #manual_run()
+    fixed_spars_run()
 
 '''
 ###
