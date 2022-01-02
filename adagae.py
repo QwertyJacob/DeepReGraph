@@ -1080,6 +1080,7 @@ class AdaGAE():
 
 
     def run_1_epoch(self,
+                    current_sparsity=200,
                     gbf=0,
                     rq_loss_weight=0.1,
                     attractive_loss_weight=1,
@@ -1104,6 +1105,7 @@ class AdaGAE():
 
             reward, loss, done_flag = self.step(dummy_action)
             print(reward)
+
             self.epoch_losses.append(loss.item())
 
         return reward, done_flag
