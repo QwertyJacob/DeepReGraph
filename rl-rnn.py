@@ -6,6 +6,14 @@ in https://dl.acm.org/doi/10.1145/3159652.3159711 is proposed.
 Comments were added by Jesus Cevallos and refer to such a paper.
 '''
 
+# Personal computer
+datapath = 'C:\\Users\\Jesus\\odrive\\Diag GDrive\\GE_Datasets_2\\'
+reports_path = 'C:\\Users\\Jesus\\odrive\\Diag GDrive\\Shared with Me\\RL_developmental_studies\\Reports\\tight_var_data\\'
+LOG_DIR = 'local_runs/'
+
+
+###
+
 import random
 import mctslib
 import rnnlib
@@ -148,10 +156,6 @@ def calculate_best(state):
 
 #Data loading.
 
-# Personal computer
-datapath = 'C:\\Users\\Jesus\\odrive\\Diag GDrive\\GE_Datasets_2\\'
-reports_path = 'C:\\Users\\Jesus\\odrive\\Diag GDrive\\Shared with Me\\RL_developmental_studies\\Reports\\tight_var_data\\'
-LOG_DIR = 'local_runs/'
 
 
 ###########
