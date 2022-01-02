@@ -62,6 +62,7 @@ import math
 import PIL.Image
 from torchvision.transforms import ToTensor
 # import hdbscan
+from sklearn.cluster import SpectralClustering
 from sklearn.cluster import KMeans
 from sklearn.utils import _safe_indexing
 from sklearn import linear_model
@@ -400,6 +401,7 @@ REPULSIVE_CE_TERM: str = 'Repulsive_CE_loss'
 ATTRACTIVE_CE_TERM: str = 'Attractive_CE_loss'
 RQ_QUOTIENT_LOSS: str = 'RQ Quotient Loss'
 RP_AGGRESSIVE_LOSS: str = 'Rep Aggressive Loss'
+RP_AGGRESSIVE_LOSS_WEIGHT: str = 'Rep Aggressive Loss Weight'
 TOTAL_LOSS_LABEL: str = 'Total_Loss'
 RQ_LOSS_WEIGHT: str = 'RQ_Loss_weight'
 GENETIC_BALANCE_FACTOR_LABEL: str = 'GeneticBalanceFactor'
@@ -796,7 +798,7 @@ class AdaGAE():
         tensorboard.add_scalar(LAMBDA_REPULSIVE_LABEL, self.current_lambda_repulsive, self.global_step)
 
         self.current_rep_agg_loss_weight = action[7]
-        tensorboard.add_scalar(RP_AGGRESSIVE_LOSS, self.current_rep_agg_loss_weight, self.global_step)
+        tensorboard.add_scalar(RP_AGGRESSIVE_LOSS_WEIGHT, self.current_rep_agg_loss_weight, self.global_step)
 
         if (self.current_sparsity != prev_sparsity) or (self.current_genetic_balance_factor != prev_gbf):
             self.update_graph()
@@ -1110,6 +1112,13 @@ class AdaGAE():
         return mapper, prediction
 
 
+    def perform_spectral_clusering_on_adj_matrix(self):
+        clustering = SpectralClustering(n_clusters=self.current_cluster_number,
+                                        affinity='precomputed_nearest_neighbors', n_neighbors=self.current_sparsity)
+        clustering.fit(self.adj.detach().cpu().numpy())
+        self.current_prediction = clustering.labels_
+
+
 def save(epoch):
     torch.save(gae.gae_nn.state_dict(), datapath + 'models' + modelname + '_model_' + str(epoch) + '_epochs')
     torch.save(gae.gae_nn.embedding, datapath + 'models' + modelname + '_embedding_' + str(epoch) + '_epochs')
@@ -1178,57 +1187,57 @@ def manual_run():
 
 
 def fixed_spars_run():
-    global epoch
+
     global current_sparsity
 
-    for epochsita in tqdm(range(max_epoch)):
-        epoch += 1
+    gae.epoch_losses = []
+
+    for i in range(max_iter):
 
         current_genetic_balance_factor = gae.get_dinamic_param(init_gbf, final_gbf)
+
         current_rq_loss_weight = gae.get_dinamic_param(init_RQ_loss_weight, final_RQ_loss_weight)
 
         current_attractive_loss_weight = gae.get_dinamic_param(init_attractive_loss_weight,
-                                                               final_attractive_loss_weight)
+                                                                final_attractive_loss_weight)
 
         current_repulsive_loss_weight = gae.get_dinamic_param(init_repulsive_loss_weight,
-                                                              final_repulsive_loss_weight)
+                                                                final_repulsive_loss_weight)
 
         current_lambda_attractive = gae.get_dinamic_param(init_lambda_attractive,
                                                           final_lambda_attractive)
 
         current_lambda_repulsive = gae.get_dinamic_param(init_lambda_repulsive,
-                                                         final_lambda_repulsive)
+                                                        final_lambda_repulsive)
 
         current_aggresive_rep_loss_weight = gae.get_dinamic_param(init_agg_repulsive,
-                                                                  final_agg_repulsive)
+                                                        final_agg_repulsive)
 
-        gae.epoch_losses = []
+        dummy_action = torch.Tensor([current_rq_loss_weight,
+                                      current_sparsity,
+                                      current_genetic_balance_factor,
+                                      current_attractive_loss_weight,
+                                      current_lambda_attractive,
+                                      current_repulsive_loss_weight,
+                                      current_lambda_repulsive,
+                                      current_aggresive_rep_loss_weight]).to(device)
 
-        for i in range(max_iter):
-            dummy_action = torch.Tensor([current_rq_loss_weight,
-                                         current_sparsity,
-                                         current_genetic_balance_factor,
-                                         current_attractive_loss_weight,
-                                         current_lambda_attractive,
-                                         current_repulsive_loss_weight,
-                                         current_lambda_repulsive,
-                                         current_aggresive_rep_loss_weight]).to(device)
 
-            reward, loss, done_flag = gae.step(dummy_action)
-            print(reward)
-            gae.epoch_losses.append(loss.item())
+        reward, loss, done_flag = gae.step(dummy_action)
+        print(reward)
+        gae.epoch_losses.append(loss.item())
 
-            print('epoch:%3d,' % epoch,
-                  'gbf: %6.3f' % current_genetic_balance_factor,
-                  'CE_attr_w: %6.3f' % current_attractive_loss_weight,
-                  'CE_rep_w: %6.3f' % current_repulsive_loss_weight,
-                  'RQ_w: %6.3f' % current_rq_loss_weight,
-                  'AR_w: %6.3f' % current_aggresive_rep_loss_weight,
-                  'spars:%3d, ' % gae.current_sparsity,
-                  'curr_clust_num:%3d,' % gae.current_cluster_number)
+        print('epoch:%3d,' % epoch,
+              'gbf: %6.3f' % current_genetic_balance_factor,
+              'CE_attr_w: %6.3f' % current_attractive_loss_weight,
+              'CE_rep_w: %6.3f' % current_repulsive_loss_weight,
+              'RQ_w: %6.3f' % current_rq_loss_weight,
+              'AR_w: %6.3f' % current_aggresive_rep_loss_weight,
+              'spars:%3d, ' % gae.current_sparsity,
+              'curr_clust_num:%3d,' % gae.current_cluster_number )
 
-            if i % 10 == 0:
-                gae.plot_classes()
+        if i%10==0:
+          gae.plot_classes()
 
 ###########
 ## HYPER-PARAMS
