@@ -7,6 +7,8 @@ Comments were added by Jesus Cevallos and refer to such a paper.
 '''
 import math
 
+
+
 class Node:
     global_node_id = 0
 
@@ -208,6 +210,50 @@ def traverse(root):
             if node._child[k] != None:
                 que.append(node._child[k])
     return node_list
+
+
+def calculate_priors(rnn, state, action_space_dim):
+	'''
+
+	Args:
+		state:
+
+	Returns: The Q values estimated for each action according to the learning module
+
+	'''
+	priors = [0 for k in range(action_space_dim)]
+
+	for action in range(action_space_dim):
+		score = rnn.predict(state, action)
+		priors[action] = score
+
+	print(priors)
+
+	return priors
+
+def calculate_best(state, rnn, action_space_dim):
+	'''
+
+	Args:
+		state:
+
+	Returns: The action to which the higher Q value corresponds being at state "state" according to the learning module
+
+	'''
+	bestid, bestvl = -1, -100000000.0
+
+	for action in range(action_space_dim):
+
+		score = rnn.predict(state, action)
+		if score > bestvl:
+			bestid = action
+			bestvl = score
+
+	return bestid
+
+
+
+
 
 
 

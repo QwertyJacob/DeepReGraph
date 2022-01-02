@@ -17,7 +17,7 @@ LOG_DIR = 'local_runs/'
 ##################################
 
 import random
-import mctslib
+from mctslib import *
 import rnnlib
 from embeddings_pool import *
 from adagae import *
@@ -26,135 +26,12 @@ from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 
 
-def search_from_pool(mcnode):
-	'''
-
-	Args:
-		mcnode: a Node from the tree
-
-	Returns: if mcnode embeddins are backed up in the pool of embeddings,
-	it will return the index of mcnode in such an array,
-	otherwise it will return -1
-
-	'''
-	pointer = mcnode._id
-	pst = -1
-
-	for k in range(pool_size):
-		if pointer == pointers[k]:
-			pst = k
-			break
-	return pst
-
-
-def add_to_pool(mcnode, gae_object):
-	'''
-	Adds a new Tree node's embeddings to the current embeddings pool array, unless it already is in it.
-	Args:
-		mcnode: the nodewhose embeddign we want to add to the embeddings pool
-
-	Returns: the index of the node in the embeddgins pool array if the adding process was succesfull
-	(the node was already in the pool  or available space was actually found)
-	and -1 otherwise.
-
-	'''
-
-	pointer = mcnode._id
-
-	pst = search_from_pool(mcnode)
-
-	if pst != -1:
-		return pst
-
-	ok = -1
-
-	for pst in range(pool_size):
-
-		if pointers[pst] == -1:
-			pointers[pst] = pointer
-			emb_pool.save_to_pool(pst,gae_object)
-			ok = pst
-			break
-
-	return ok
-
-
-def load_from_pool(mcnode, gae_object):
-	'''
-	If mcnode's embeddings are backed up in the embeddings pool, then
-	load the embeddings from the embeddings pools.
-	Args:
-		mcnode:
-
-	Returns: the index of the node in the embeddings pool array if such a node is in the node pool. and -1 otherwise.
-
-	'''
-	pointer = mcnode._id
-	pst = search_from_pool(mcnode)
-	if pst != -1:
-		emb_pool.load_from_pool(pst,gae_object)
-	return pst
-
-
-def delete_from_pool(pst):
-	'''
-	Deletes the node whose index is pst from the pool array.
-	Args:
-		pst:
-
-	Returns:
-
-	'''
-	if pst >= 0 and pst < pool_size:
-		pointers[pst] = -1
 
 
 def run(curiter, act, adagae_object):
 	current_spars_ = init_spars + (curiter*sparsity_increase)
 	adagae_run(act, actions_array, adagae_object, current_spars_ )
 	print('\rIter:', curiter, ' Spars:',current_spars_, ' Type:', act, 'Training DONE!')
-
-
-def calculate_priors(state):
-	'''
-
-	Args:
-		state:
-
-	Returns: The Q values estimated for each action according to the learning module
-
-	'''
-	priors = [0 for k in range(type_size)]
-
-	for action in range(type_size):
-		score = rnn.predict(state, action)
-		priors[action] = score
-
-	print(priors)
-
-	return priors
-
-
-def calculate_best(state):
-	'''
-
-	Args:
-		state:
-
-	Returns: The action to which the higher Q value corresponds being at state "state" according to the learning module
-
-	'''
-	bestid, bestvl = -1, -100000000.0
-
-	for action in range(type_size):
-
-		score = rnn.predict(state, action)
-		if score > bestvl:
-			bestid = action
-			bestvl = score
-
-	return bestid
-
 
 
 
@@ -194,12 +71,10 @@ depth = 0
 
 tree_size = 10
 
-pool_size = 12
+pool_size = 20
 
 # lamb balances exploration and exploitation
 lamb = 0.5
-
-binary = 1
 
 # the penalty given for each action different from "end training"
 penalty = 0.0005
@@ -243,11 +118,9 @@ adagae_obj = AdaGAE(X,
 emb_pool = AdaGAEPool(pool_size)
 
 
-#pointers is an array containing the ids of the available Tree nodes
-pointers = [-1 for k in range(pool_size)]
 
 # Tree creation
-mctree = mctslib.Tree()
+mctree = Tree()
 mctree.set_lambda(lamb)
 mctree.set_action_size(type_size)
 
@@ -261,7 +134,7 @@ print('Training process:')
 # set priors for the root node and add some random variance
 mctree.get_root().add_prior([random.random() / 100000 for k in range(type_size)])
 
-add_to_pool(mctree.get_root(), adagae_obj)
+emb_pool.add_to_pool(mctree.get_root(), adagae_obj)
 
 selected_act_seq = [type_size]
 
@@ -308,7 +181,7 @@ while True:
 		# that is backed up in the embeddings pool.
 		while prev_mcnode != None:
 
-			if load_from_pool(prev_mcnode, adagae_obj) != -1:
+			if emb_pool.try_load_from_pool(prev_mcnode, adagae_obj) != -1:
 				# The node's embedding has been found in the embeddins pool,
 				# and its embedding has been loaded,
 				# so we break the loop and go ahoead. (the current embedding contains the result of
@@ -366,13 +239,13 @@ while True:
 		# generate the current root's embedding.
 		# (such a root is updated each time we perform a number of MCT searches and choose the action to take to
 		# continue the embedding game (phase 2  of each "stage")
-		priors = calculate_priors(selected_act_seq + next_mcnode._act)
+		priors = calculate_priors(rnn, selected_act_seq + next_mcnode._act, type_size)
 		next_mcnode.set_prior(priors)
 
 		# BACKUP the current produced embedding in the embeddings pool.
 		# notice this method can fail when there is no space left in the pool.
 		# (that is the reason why we made a particular embedding loading cycle before).
-		add_to_pool(next_mcnode, adagae_obj)
+		emb_pool.add_to_pool(next_mcnode, adagae_obj)
 
 
 		# "simulation" of "depth" further actions from the NEW node on.
@@ -400,7 +273,7 @@ while True:
 			while True:
 
 				# get the next action to do according to the learning module
-				simu_action = calculate_best(selected_act_seq + act_seq)
+				simu_action = calculate_best(selected_act_seq + act_seq, rnn, type_size)
 
 				# run such an action (should imply embedding loading)
 				run(stage + len(mcnode._act) + curdepth + 1, simu_action, adagae_obj)
@@ -459,20 +332,21 @@ while True:
 	# condition for ending the whole training cycle: we have choosen an action whose
 	# Q value resulted < 0
 	if mctree.get_root().get_action_score(action) < 0:
+		print('END CONDITION REACHED')
 		break
 
 
-	if search_from_pool(mctree.get_root().get_child(action)) == -1:
+	if emb_pool.search_from_pool(mctree.get_root().get_child(action)) == -1:
 		# if the embeddings of the current chosen root's child are not backed
 		# up in the embeddings pool, then load from pool the embeddings of the current root node.
-		load_from_pool(mctree.get_root(), adagae_obj)
+		emb_pool.try_load_from_pool(mctree.get_root(), adagae_obj)
 		# run the current chosen action using the embedding algorithm.
 		# this should imply loading the produced embedding
 		run(stage, action, adagae_obj)
 	else:
 		# if instead the embeddings of the action chosen are already in the pool, then we load them.
 		print('Iter:', stage, 'Type:', action, 'Loading from pool!')
-		load_from_pool(mctree.get_root().get_child(action), adagae_obj)
+		emb_pool.try_load_from_pool(mctree.get_root().get_child(action), adagae_obj)
 
 
 	#Reporting results of the action take by the root node.
@@ -490,11 +364,11 @@ while True:
 	# (the old root that we have just removed from the tree is also removed from the
 	# embeddings pool array
 	for pst in range(pool_size):
-		if mctree.search_id(pointers[pst]) == 0:
-			delete_from_pool(pst)
+		if mctree.search_id(emb_pool.pointers[pst]) == 0:
+			emb_pool.delete_from_pool(pst)
 
 	# And the new root is going to be added to the embeddings pool.
-	add_to_pool(mctree.get_root(), adagae_obj)
+	emb_pool.add_to_pool(mctree.get_root(), adagae_obj)
 
 
 	# UPDATE THE LEARNING MODULE
