@@ -1,6 +1,5 @@
 
 import torch
-from torch.utils.tensorboard import SummaryWriter
 import cProfile
 import pstats
 from functools import wraps
@@ -15,8 +14,8 @@ from sklearn.cluster import SpectralClustering
 from sklearn.cluster import KMeans
 from sklearn.utils import _safe_indexing
 from sklearn import linear_model
-import umap
-import umap.plot
+#import umap
+#import umap.plot
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
@@ -1216,8 +1215,7 @@ def fixed_spars_run(gae,
         print(reward)
         gae.epoch_losses.append(loss.item())
 
-        print('epoch:%3d,' % epoch,
-              'gbf: %6.3f' % current_genetic_balance_factor,
+        print('gbf: %6.3f' % current_genetic_balance_factor,
               'CE_attr_w: %6.3f' % current_attractive_loss_weight,
               'CE_rep_w: %6.3f' % current_repulsive_loss_weight,
               'RQ_w: %6.3f' % current_rq_loss_weight,
