@@ -95,6 +95,9 @@ class AdaGAEPool():
         pst = self.search_from_pool(mcnode)
 
         if pst != -1:
+            assert self.embeddings_pool[pst] is not None
+            assert self.encoder_state_pool[pst] is not None
+
             self.load_from_pool(pst, gae_object)
 
         return pst
