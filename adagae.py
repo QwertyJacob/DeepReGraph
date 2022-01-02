@@ -488,8 +488,6 @@ class AdaGAE():
         self.links = links
         self.kendall_matrix = kendall_matrix
         self.ge_class_labels = ge_class_labels
-        self.ge_class_labels = data_preprocessing(datapath, reports_path, genes_to_pick, device,
-                                                                       add_self_loops_genomic)
 
         self.device = device
         if self.device is None: self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
