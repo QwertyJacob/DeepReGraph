@@ -38,7 +38,15 @@ if __name__ == '__main__':
     modelname = '/champion'
     tensorboard = SummaryWriter(LOG_DIR + modelname)
 
-    gae = AdaGAE(tensorboard,
+    X, ge_count, ccre_count, links, kendall_matrix, ge_class_labels = data_preprocessing(datapath, reports_path, genes_to_pick, device)
+
+    gae = AdaGAE(X,
+                 ge_count,
+                 ccre_count,
+                 links,
+                 kendall_matrix,
+                 ge_class_labels,
+                 tensorboard,
                  device=device,
                  genes_to_pick=genes_to_pick,
                  datapath = datapath,

@@ -327,7 +327,7 @@ def get_primitive_gene_clusters(reports_path,link_ds):
     return np.array(prim_gene_ds.primitive_cluster.to_list())
 
 
-def data_preprocessing(datapath, reports_path, genes_to_pick, device, add_self_loops_genomic):
+def data_preprocessing(datapath, reports_path, genes_to_pick, device, add_self_loops_genomic=False):
     ## Data preprocessing:
 
     link_ds, ccre_ds = load_data(datapath, genes_to_pick)
@@ -447,6 +447,12 @@ class AdaGAE_NN(torch.nn.Module):
 class AdaGAE():
 
     def __init__(self,
+                 X,
+                 ge_count,
+                 ccre_count,
+                 links,
+                 kendall_matrix,
+                 ge_class_labels,
                  tensorboard,
                  device=None,
                  pre_trained=False,
@@ -455,6 +461,7 @@ class AdaGAE():
                  global_step=0,
                  layers=None,
                  init_sparsity=200,
+
                  gcn=False,
                  init_genomic_slope=0.4,
                  init_genomic_C=3e5,
@@ -476,7 +483,12 @@ class AdaGAE():
 
         super(AdaGAE, self).__init__()
 
-        X, self.ge_count, self.ccre_count, self.links, self.kendall_matrix, self.ge_class_labels = data_preprocessing(datapath, reports_path, genes_to_pick, device,
+        self.ge_count = ge_count
+        self.ccre_count = ccre_count
+        self.links = links
+        self.kendall_matrix = kendall_matrix
+        self.ge_class_labels = ge_class_labels
+        self.ge_class_labels = data_preprocessing(datapath, reports_path, genes_to_pick, device,
                                                                        add_self_loops_genomic)
 
         self.device = device
