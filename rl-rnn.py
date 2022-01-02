@@ -231,9 +231,7 @@ adagae_obj = AdaGAE(X,
              ge_class_labels,
              tensorboard,
             device=device,
-            genes_to_pick=genes_to_pick,
             datapath = datapath,
-            reports_path=reports_path,
             learning_rate=learning_rate)
 
 

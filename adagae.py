@@ -461,7 +461,6 @@ class AdaGAE():
                  global_step=0,
                  layers=None,
                  init_sparsity=200,
-
                  gcn=False,
                  init_genomic_slope=0.4,
                  init_genomic_C=3e5,
@@ -475,9 +474,6 @@ class AdaGAE():
                  clusterize=True,
                  learning_rate = 5 * 10 ** -3,
                  datapath="/content/DIAGdrive/MyDrive/GE_Datasets/",
-                 reports_path='/content/DIAGdrive/MyDrive/RL_developmental_studies/Reports/tight_var_data/',
-                 genes_to_pick=0,
-                 add_self_loops_genomic=False,
                  add_self_loops_euclidean=False,
                  use_kendall_matrix=True):
 
