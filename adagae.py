@@ -840,11 +840,16 @@ class AdaGAE():
         loss.backward()
         self.gae_nn.optimizer.step()
 
+        return loss
+
+
+    def evaluate(self):
+
         done_flag = False
 
         gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = 0, 0, 0, 0, 0, 0
 
-        if self.clusterize and self.current_cluster_number < 30:
+        if self.current_cluster_number < 30:
 
             gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = self.clustering()
             self.tensorboard.add_scalar(GE_CC_SCORE_TAG, gene_cc_score, self.global_step)
@@ -864,7 +869,8 @@ class AdaGAE():
 
         self.tensorboard.add_scalar(REWARD_TAG, reward, self.global_step)
 
-        return reward, loss, done_flag
+        return reward, done_flag
+
 
     def get_dinamic_param(self, init_value, final_value, T):
         return init_value + ((final_value - init_value) * (1 / (1 + math.e ** (-1 * (self.iteration - (T/ 2)) / (T/10)))))
@@ -1092,12 +1098,12 @@ class AdaGAE():
     def run_1_epoch(self,
                     current_sparsity=200,
                     gbf=0,
-                    rq_loss_weight=0.1,
+                    rq_loss_weight=0,
                     attractive_loss_weight=1,
                     repulsive_loss_weight=1,
                     lambda_attractive=0.5,
                     lambda_repulsive=0.5,
-                    agg_repulsive=0.1,
+                    agg_repulsive=0,
                     max_iter=15):
 
         self.epoch_losses = []
@@ -1113,13 +1119,13 @@ class AdaGAE():
                                          lambda_repulsive,
                                          agg_repulsive]).to(self.device)
 
-            reward, loss, done_flag = self.step(dummy_action)
-            print(reward)
+            loss = self.step(dummy_action)
 
             self.epoch_losses.append(loss.item())
 
-        return reward, done_flag
 
+
+        return sum(self.epoch_losses) / len(self.epoch_losses)
 
 
 
@@ -1131,6 +1137,7 @@ def save(gae, epoch, datapath, modelname):
 @profile(output_file='profiling_adagae')
 def manual_run(gae,
                max_epoch=10,
+               init_sparsity=200,
                sparsity_increment=40,
                init_gbf=0.7,
                final_gbf=0,
@@ -1148,10 +1155,11 @@ def manual_run(gae,
                final_agg_repulsive=0.1,
                max_iter=15):
 
-    global epoch
-    global current_sparsity
+    current_sparsity = init_sparsity
+    epoch=0
 
-    for epochsita in range(max_epoch):
+    while epoch < max_epoch:
+
         epoch += 1
 
         T = max_epoch * max_iter
@@ -1189,12 +1197,17 @@ def manual_run(gae,
                                          current_lambda_repulsive,
                                          current_aggresive_rep_loss_weight]).to(gae.device)
 
-            reward, loss, done_flag = gae.step(dummy_action)
-            print(reward)
+            loss = gae.step(dummy_action)
+
             gae.epoch_losses.append(loss.item())
 
         mean_loss = sum(gae.epoch_losses) / len(gae.epoch_losses)
+
+        reward, done_flag = gae.evaluate()
+
         print('epoch:%3d,' % epoch,
+              'reward:%3d,' % reward,
+              'mean loss:%3d,' % mean_loss,
               'gbf: %6.3f' % current_genetic_balance_factor,
               'CE_attr_w: %6.3f' % current_attractive_loss_weight,
               'CE_rep_w: %6.3f' % current_repulsive_loss_weight,
@@ -1202,13 +1215,15 @@ def manual_run(gae,
               'AR_w: %6.3f' % current_aggresive_rep_loss_weight,
               'spars:%3d, ' % gae.current_sparsity,
               'curr_clust_num:%3d,' % gae.current_cluster_number )
+
         if gae.layers[-1] > 2:
-          if epochsita%10==0:
+          if epoch%10==0:
             gae.plot_classes()
         else:
           gae.plot_classes()
 
     print('gae.current_cluster_number', gae.current_cluster_number)
+
 
 
 def fixed_spars_run(gae,
@@ -1264,8 +1279,8 @@ def fixed_spars_run(gae,
                                       current_aggresive_rep_loss_weight]).to(gae.device)
 
 
-        reward, loss, done_flag = gae.step(dummy_action)
-        print(reward)
+        loss = gae.step(dummy_action)
+
         gae.epoch_losses.append(loss.item())
 
         print('gbf: %6.3f' % current_genetic_balance_factor,
@@ -1274,7 +1289,28 @@ def fixed_spars_run(gae,
               'RQ_w: %6.3f' % current_rq_loss_weight,
               'AR_w: %6.3f' % current_aggresive_rep_loss_weight,
               'spars:%3d, ' % gae.current_sparsity,
-              'curr_clust_num:%3d,' % gae.current_cluster_number )
+              'curr_clust_num:%3d,' % gae.current_cluster_number)
 
-        if i%10==0:
-          gae.plot_classes()
+
+    reward, done_flag = gae.evaluate()
+    print('reward ',reward)
+
+    if i%10==0:
+      gae.plot_classes()
+
+
+
+
+
+
+def adagae_run(action_index, actions_array, adagae_object, curr_sparsity):
+
+  curr_action = actions_array[action_index]
+  print('Curr_action: [GBF: ',curr_action[0], ', ATTR: ',curr_action[1], ', REP: ', curr_action[2], ']')
+  adagae_object.run_1_epoch(current_sparsity = curr_sparsity,
+                            gbf = curr_action[0],
+                            attractive_loss_weight = curr_action[1],
+                            repulsive_loss_weight = curr_action[2],
+                            )
+  adagae_object.plot_classes()
+  return adagae_object.evaluate()

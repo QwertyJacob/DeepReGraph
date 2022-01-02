@@ -10,6 +10,10 @@ import random
 import mctslib
 import rnnlib
 from embeddings_pool import *
+from adagae import *
+import torch
+from torch.utils.tensorboard import SummaryWriter
+import matplotlib.pyplot as plt
 
 
 def search_from_pool(mcnode):
@@ -33,7 +37,7 @@ def search_from_pool(mcnode):
 	return pst
 
 
-def add_to_pool(mcnode):
+def add_to_pool(mcnode, gae_object):
 	'''
 	Adds a new Tree node's embeddings to the current embeddings pool array, unless it already is in it.
 	Args:
@@ -65,7 +69,7 @@ def add_to_pool(mcnode):
 	return ok
 
 
-def load_from_pool(mcnode):
+def load_from_pool(mcnode, gae_object):
 	'''
 	If mcnode's embeddings are backed up in the embeddings pool, then
 	load the embeddings from the embeddings pools.
@@ -95,9 +99,10 @@ def delete_from_pool(pst):
 		pointers[pst] = -1
 
 
-def run(curiter, act):
-	linelib.run_trainer_line(trainers[act], samples, negative, alpha, threads)
-	print('\rIter:', curiter, 'Type:', act, 'Training DONE!')
+def run(curiter, act, adagae_object):
+	current_spars_ = init_spars + (curiter*sparsity_increase)
+	adagae_run(act, actions_array, adagae_object, current_spars_ )
+	print('\rIter:', curiter, ' Spars:',current_spars_, ' Type:', act, 'Training DONE!')
 
 
 def calculate_priors(state):
@@ -143,37 +148,45 @@ def calculate_best(state):
 
 #Data loading.
 
-cont_file = '../data_dblp/node0.txt'
-node_file = '../data_dblp/node1.txt'
-net_file = '../data_dblp/hinet.txt'
-train_file = '../data_dblp/train.lb'
-test_file = '../data_dblp/test.lb'
-output_file = 'vec.emb'
+# Personal computer
+datapath = 'C:\\Users\\Jesus\\odrive\\Diag GDrive\\GE_Datasets_2\\'
+reports_path = 'C:\\Users\\Jesus\\odrive\\Diag GDrive\\Shared with Me\\RL_developmental_studies\\Reports\\tight_var_data\\'
+LOG_DIR = 'local_runs/'
 
 
-# Hyper params.
+###########
+## HYPER-PARAMS
+###########
+
+
+init_spars = 200
+sparsity_increase = 40
 
 #vector_size is the node embedding dimension
 vector_size = 100
 
-# number of negative samples per positive sample for a run of the LINE algorithm
-negative = 5
 
-# Number of link samples taken at each run of the LINE algorithm
-samples = 1000000
+#Actions array contains the possible actions:
+#each action is a tuple containing:
+# (1. GBF, 2. ATTRACTIVE FORCE WEIGTH, 3. REPULSIVE FORCE WEIGTH)
 
-
-threads = 20
-
-# alpha is the learning rate for the LINE embedding algorithm
-alpha = 0.015
+actions_array = np.array([[0.8,0,1],
+                 [0.5,0,1],
+                 [0,0,1],
+                 [0.8,1,0],
+                 [0.5,1,0],
+                 [0,1,0],
+                 [0.8,0.5,0.5],
+                 [0.5,0.5,0.5],
+                 [0,0.5,0.5]])
 
 # type_size is the number of available actions.
-type_size = 3
+type_size = actions_array.shape[0]
+print('possible actions: ',type_size)
 
 depth = 0
 
-tree_size = 7
+tree_size = 10
 
 pool_size = 12
 
@@ -188,6 +201,36 @@ penalty = 0.0005
 hist_length = 5
 
 
+plt.rcParams["figure.figsize"] = (10, 10)
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+genes_to_pick = 0
+
+learning_rate = 5 * 10 ** -3
+
+
+#######
+# RUNNING #
+#######
+
+
+X, ge_count, ccre_count, links, kendall_matrix, ge_class_labels = data_preprocessing(datapath, reports_path, genes_to_pick, device)
+
+
+modelname = '/new_run_step'
+tensorboard = SummaryWriter(LOG_DIR + modelname)
+
+adagae_obj = AdaGAE(X,
+             ge_count,
+             ccre_count,
+             links,
+             kendall_matrix,
+             ge_class_labels,
+             tensorboard,
+            device=device,
+            genes_to_pick=genes_to_pick,
+            datapath = datapath,
+            reports_path=reports_path,
+            learning_rate=learning_rate)
 
 
 emb_pool = AdaGAEPool(pool_size)
@@ -211,7 +254,7 @@ print('Training process:')
 # set priors for the root node and add some random variance
 mctree.get_root().add_prior([random.random() / 100000 for k in range(type_size)])
 
-add_to_pool(mctree.get_root())
+add_to_pool(mctree.get_root(), adagae_obj)
 
 selected_act_seq = [type_size]
 
@@ -258,7 +301,7 @@ while True:
 		# that is backed up in the embeddings pool.
 		while prev_mcnode != None:
 
-			if load_from_pool(prev_mcnode) != -1:
+			if load_from_pool(prev_mcnode, adagae_obj) != -1:
 				# The node's embedding has been found in the embeddins pool,
 				# and its embedding has been loaded,
 				# so we break the loop and go ahoead. (the current embedding contains the result of
@@ -289,14 +332,14 @@ while True:
 		# This should imply that the embedding produced by each "run" function call gets loaded.
 		for k in range(len(hist_act)):
 			act = hist_act[k]
-			run(stage + len(prev_mcnode._act) + k, act)
+			run(stage + len(prev_mcnode._act) + k, act, adagae_obj)
 
 		# When we reach this point, we have loaded the embedding specified in the action sequence array of the
 		# current leaf node found. Now we do a further step to expand the tree:
 		# find the best action from the leaf node usign ec. (4) and execute it
 		# notice that the new embedding should get automatically loaded.
 		action = mcnode.get_max()
-		run(stage + len(mcnode._act), action)
+		run(stage + len(mcnode._act), action, adagae_obj)
 
 
 		# expand the tree adding the new node
@@ -305,7 +348,7 @@ while True:
 		# Evaluate the new embedding on the downstream task to get its score.
 		# note that, this "run_classifier_train" function call should take the embedding produced by
 		# the latest call to the "run" function call, to perform and evaluate the downstream task.
-		curvl = linelib.run_classifier_train(classifier, 1, 0.1)
+		curvl = adagae_obj.evaluate()
 		# set such a score as the "base" value of the node.
 		next_mcnode.set_base(curvl)
 
@@ -322,7 +365,7 @@ while True:
 		# BACKUP the current produced embedding in the embeddings pool.
 		# notice this method can fail when there is no space left in the pool.
 		# (that is the reason why we made a particular embedding loading cycle before).
-		add_to_pool(next_mcnode)
+		add_to_pool(next_mcnode, adagae_obj)
 
 
 		# "simulation" of "depth" further actions from the NEW node on.
@@ -353,13 +396,13 @@ while True:
 				simu_action = calculate_best(selected_act_seq + act_seq)
 
 				# run such an action (should imply embedding loading)
-				run(stage + len(mcnode._act) + curdepth + 1, simu_action)
+				run(stage + len(mcnode._act) + curdepth + 1, simu_action, adagae_obj)
 
 				# add this action to the state action sequence
 				act_seq.append(simu_action)
 
 				#get the score of this new embedding
-				curvl = linelib.run_classifier_train(classifier, 1, 0.1)
+				curvl = adagae_obj.evaluate()
 
 				if curvl - lastvl < penalty:
 					# no further gain has been obtained from the last embedding
@@ -415,18 +458,18 @@ while True:
 	if search_from_pool(mctree.get_root().get_child(action)) == -1:
 		# if the embeddings of the current chosen root's child are not backed
 		# up in the embeddings pool, then load from pool the embeddings of the current root node.
-		load_from_pool(mctree.get_root())
+		load_from_pool(mctree.get_root(), adagae_obj)
 		# run the current chosen action using the embedding algorithm.
 		# this should imply loading the produced embedding
-		run(stage, action)
+		run(stage, action, adagae_obj)
 	else:
 		# if instead the embeddings of the action chosen are already in the pool, then we load them.
 		print('Iter:', stage, 'Type:', action, 'Loading from pool!')
-		load_from_pool(mctree.get_root().get_child(action))
+		load_from_pool(mctree.get_root().get_child(action), adagae_obj)
 
 
 	#Reporting results of the action take by the root node.
-	curvl = linelib.run_classifier_train(classifier, 1, 0.1)
+	curvl = adagae_obj.evaluate()
 	print('!!!!!!!!!!!!!!!!!!!!')
 	print('Iter:', stage, 'Final Decision:', action, curvl)
 	print('!!!!!!!!!!!!!!!!!!!!')
@@ -444,7 +487,7 @@ while True:
 			delete_from_pool(pst)
 
 	# And the new root is going to be added to the embeddings pool.
-	add_to_pool(mctree.get_root())
+	add_to_pool(mctree.get_root(), adagae_obj)
 
 
 	# UPDATE THE LEARNING MODULE
@@ -485,8 +528,6 @@ while True:
 	stage += 1
 
 
-linelib.run_classifier_train(classifier, 100, 0.01)
 
-print('Test Accuracy:', linelib.run_classifier_test(classifier))
+print('Test Accuracy:', adagae_obj.evaluate())
 
-linelib.write_node_vecs(node, output_file, binary)
