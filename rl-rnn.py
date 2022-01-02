@@ -6,15 +6,10 @@ in https://dl.acm.org/doi/10.1145/3159652.3159711 is proposed.
 Comments were added by Jesus Cevallos and refer to such a paper.
 '''
 
-
-import sys
-import os
 import random
-import struct
-import pylinelib as linelib
 import mctslib
 import rnnlib
-
+from embeddings_pool import *
 
 
 def search_from_pool(mcnode):
@@ -63,8 +58,7 @@ def add_to_pool(mcnode):
 
 		if pointers[pst] == -1:
 			pointers[pst] = pointer
-			linelib.save_to(node_pools[pst])
-			linelib.save_to(cont_pools[pst])
+			emb_pool.save_to_pool(pst,gae_object)
 			ok = pst
 			break
 
@@ -84,8 +78,7 @@ def load_from_pool(mcnode):
 	pointer = mcnode._id
 	pst = search_from_pool(mcnode)
 	if pst != -1:
-		linelib.load_from(node_pools[pst])
-		linelib.load_from(cont_pools[pst])
+		emb_pool.load_from_pool(pst,gae_object)
 	return pst
 
 
@@ -196,15 +189,8 @@ hist_length = 5
 
 
 
-node = linelib.add_node(node_file, vector_size)
-cont = linelib.add_node(cont_file, vector_size)
-hin = linelib.add_hin(net_file, cont, node, 1)
-trainers = [linelib.add_trainer_line(hin, k) for k in range(type_size)]
-classifier = linelib.add_node_classifier(node, train_file, test_file)
 
-node_pools = [linelib.add_emb_backup(node) for k in range(pool_size)]
-cont_pools = [linelib.add_emb_backup(cont) for k in range(pool_size)]
-
+emb_pool = AdaGAEPool(pool_size)
 
 
 #pointers is an array containing the ids of the available Tree nodes

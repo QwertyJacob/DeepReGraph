@@ -850,7 +850,7 @@ class AdaGAE():
 
         reward = (0.25 * scaled_ge_cc_score) + \
                  (0.25 * scaled_ccre_cc_score) + \
-                 (0.25 * distance_score)
+                 (0.25 * scaled_distance_score)
 
         self.tensorboard.add_scalar(REWARD_TAG, reward, self.global_step)
 
@@ -1077,6 +1077,39 @@ class AdaGAE():
                                         affinity='precomputed_nearest_neighbors', n_neighbors=self.current_sparsity)
         clustering.fit(self.adj.detach().cpu().numpy())
         self.current_prediction = clustering.labels_
+
+
+    def run_1_epoch(self,
+                    gbf=0,
+                    rq_loss_weight=0.1,
+                    attractive_loss_weight=1,
+                    repulsive_loss_weight=1,
+                    lambda_attractive=0.5,
+                    lambda_repulsive=0.5,
+                    agg_repulsive=0.1,
+                    max_iter=15):
+
+        self.epoch_losses = []
+
+        for i in range(max_iter):
+
+            dummy_action = torch.Tensor([rq_loss_weight,
+                                         current_sparsity,
+                                         gbf,
+                                         attractive_loss_weight,
+                                         lambda_attractive,
+                                         repulsive_loss_weight,
+                                         lambda_repulsive,
+                                         agg_repulsive]).to(self.device)
+
+            reward, loss, done_flag = self.step(dummy_action)
+            print(reward)
+            self.epoch_losses.append(loss.item())
+
+        return reward, done_flag
+
+
+
 
 def save(gae, epoch, datapath, modelname):
     torch.save(gae.gae_nn.state_dict(), datapath + 'models' + modelname + '_model_' + str(epoch) + '_epochs')
