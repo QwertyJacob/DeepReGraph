@@ -12,7 +12,9 @@ reports_path = 'C:\\Users\\Jesus\\odrive\\Diag GDrive\\Shared with Me\\RL_develo
 LOG_DIR = 'local_runs/'
 
 
-###
+##################################
+##COPY TO NOTEBOOK FROM HERE!!!###
+##################################
 
 import random
 import mctslib
@@ -154,7 +156,7 @@ def calculate_best(state):
 	return bestid
 
 
-#Data loading.
+
 
 
 
@@ -212,14 +214,17 @@ genes_to_pick = 0
 learning_rate = 5 * 10 ** -3
 
 
-#######
-# RUNNING #
-#######
+#################
+# DATA LOADING #
+################
 
 
 X, ge_count, ccre_count, links, kendall_matrix, ge_class_labels = data_preprocessing(datapath, reports_path, genes_to_pick, device)
 
 
+################
+# RUNNING
+################
 modelname = '/new_run_step'
 tensorboard = SummaryWriter(LOG_DIR + modelname)
 

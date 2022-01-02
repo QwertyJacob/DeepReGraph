@@ -841,8 +841,6 @@ class AdaGAE():
 
     def evaluate(self):
 
-        done_flag = False
-
         gene_cc_score, ccre_cc_score, heterogeneity_score, ge_comp, ccre_comp, distance_score = 0, 0, 0, 0, 0, 0
 
         if self.current_cluster_number < 30:
@@ -865,7 +863,7 @@ class AdaGAE():
 
         self.tensorboard.add_scalar(REWARD_TAG, reward, self.global_step)
 
-        return reward, done_flag
+        return reward
 
 
     def get_dinamic_param(self, init_value, final_value, T):
