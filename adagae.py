@@ -1,3 +1,11 @@
+'''
+The following code is a modified version of the code available at https://github.com/hyzhang98/AdaGAE
+which is an implementation of the paper "Adaptive Graph Auto-Encoder for General Data Clustering"
+available at https://ieeexplore.ieee.org/document/9606581
+Modifications were made by Jesus Cevallos to adapt to the application problem.
+'''
+
+
 
 import torch
 import cProfile
