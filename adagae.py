@@ -1197,7 +1197,7 @@ def manual_run(gae,
 
         mean_loss = sum(gae.epoch_losses) / len(gae.epoch_losses)
 
-        reward, done_flag = gae.evaluate()
+        reward = gae.evaluate()
 
         print('epoch:%3d,' % epoch,
               'reward:%3d,' % reward,
@@ -1286,7 +1286,7 @@ def fixed_spars_run(gae,
               'curr_clust_num:%3d,' % gae.current_cluster_number)
 
 
-    reward, done_flag = gae.evaluate()
+    reward = gae.evaluate()
     print('reward ',reward)
 
     if i%10==0:
