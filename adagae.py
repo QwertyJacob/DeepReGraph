@@ -475,7 +475,8 @@ class AdaGAE():
                  learning_rate = 5 * 10 ** -3,
                  datapath="/content/DIAGdrive/MyDrive/GE_Datasets/",
                  add_self_loops_euclidean=False,
-                 use_kendall_matrix=True):
+                 use_kendall_matrix=True,
+                 attributed=True):
 
         super(AdaGAE, self).__init__()
 
@@ -484,7 +485,7 @@ class AdaGAE():
         self.links = links
         self.kendall_matrix = kendall_matrix
         self.ge_class_labels = ge_class_labels
-
+        self.attributed = attributed
         self.device = device
         if self.device is None: self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.X = X
@@ -494,8 +495,10 @@ class AdaGAE():
         self.global_step = global_step
         self.global_ccres_over_genes_ratio = (self.ccre_count / self.ge_count)
 
-
-        input_dim = X.shape[1]
+        if self.attributed:
+            input_dim = X.shape[1]
+        else:
+            input_dim = X.shape[0]
         if layers is None:
             self.layers = [input_dim, 12, 2]
         self.init_sparsity = init_sparsity
@@ -526,7 +529,11 @@ class AdaGAE():
         self.iteration = 0
         self.gae_nn = None
         torch.cuda.empty_cache()
-        self.gae_nn = AdaGAE_NN(self.X,
+        if self.attributed:
+            data_matrix_for_nn = self.X
+        else:
+            data_matrix_for_nn = torch.eye(self.X.shape[0],self.X.shape[0]).to(self.device)
+        self.gae_nn = AdaGAE_NN(data_matrix_for_nn,
                                 self.device,
                                 self.pre_trained,
                                 self.pre_trained_state_dict,
@@ -562,7 +569,10 @@ class AdaGAE():
         if self.pre_trained:
             self.adj, self.raw_adj = self.cal_weights_via_CAN(self.gae_nn.embedding.t())
         else:
-            self.adj, self.raw_adj = self.cal_weights_via_CAN(self.X.t())
+            if self.attributed:
+                self.adj, self.raw_adj = self.cal_weights_via_CAN(self.X.t())
+            else:
+                self.adj, self.raw_adj = self.cal_weights_via_CAN(self.X.t(), first_time_unattributed=True)
 
         self.norm_adj = get_normalized_adjacency_matrix(self.adj)
         self.norm_adj = self.norm_adj.to_sparse()
@@ -869,85 +879,65 @@ class AdaGAE():
     def get_dinamic_param(self, init_value, final_value, T):
         return init_value + ((final_value - init_value) * (1 / (1 + math.e ** (-1 * (self.iteration - (T/ 2)) / (T/10)))))
 
-    def cal_weights_via_CAN(self, transposed_data_matrix):
+    def cal_weights_via_CAN(self, transposed_data_matrix, first_time_unattributed=False):
         """
         Solve Problem: Clustering-with-Adaptive-Neighbors(CAN)
         See section 3.6 of the paper! (specially equation 20)
         """
         size = transposed_data_matrix.shape[1]
 
-        distances = distance(transposed_data_matrix, transposed_data_matrix)
-        if not eval: self.tensorboard.add_scalar(EMBEDDING_DIAMETER, distances.median(), self.global_step)
-        distances = torch.max(distances, torch.t(distances))
-        sorted_distances, _ = distances.sort(dim=1)
+        if first_time_unattributed:
+            assert self.current_genetic_balance_factor == 1, 'Unattributed graph embedding with GBF different from 1!!'
+            weights = torch.zeros(size, size).to(self.device)
 
-        # distance to the k-th nearest neighbor ONLY GENES:
-        top_k_genes = sorted_distances[:self.ge_count, self.current_gene_sparsity]
-        top_k_genes = torch.t(top_k_genes.repeat(size, 1)) + 10 ** -10
-        self.tensorboard.add_scalar(DISTANCE_TO_KNN_TAG, top_k_genes.median(), self.global_step)
-        # summatory of the nearest k distances ONLY GENES:
-        sum_top_k_genes = torch.sum(sorted_distances[:self.ge_count, 0:self.current_gene_sparsity], dim=1)
-        sum_top_k_genes = torch.t(sum_top_k_genes.repeat(size, 1))
+        else:
+            distances = distance(transposed_data_matrix, transposed_data_matrix)
+            if not eval: self.tensorboard.add_scalar(EMBEDDING_DIAMETER, distances.median(), self.global_step)
+            distances = torch.max(distances, torch.t(distances))
+            sorted_distances, _ = distances.sort(dim=1)
 
-        # numerator of equation 20 in the paper ONLY GENES
-        T_genes = top_k_genes - distances[:self.ge_count, ]
+            # distance to the k-th nearest neighbor ONLY GENES:
+            top_k_genes = sorted_distances[:self.ge_count, self.current_gene_sparsity]
+            top_k_genes = torch.t(top_k_genes.repeat(size, 1)) + 10 ** -10
+            self.tensorboard.add_scalar(DISTANCE_TO_KNN_TAG, top_k_genes.median(), self.global_step)
+            # summatory of the nearest k distances ONLY GENES:
+            sum_top_k_genes = torch.sum(sorted_distances[:self.ge_count, 0:self.current_gene_sparsity], dim=1)
+            sum_top_k_genes = torch.t(sum_top_k_genes.repeat(size, 1))
 
-        # equation 20 in the paper. notice that self.current_sparsity = k. ONLY GENES
-        weights_genes = torch.div(T_genes, self.current_gene_sparsity * top_k_genes - sum_top_k_genes)
+            # numerator of equation 20 in the paper ONLY GENES
+            T_genes = top_k_genes - distances[:self.ge_count, ]
 
-        # distance to the k-th nearest neighbor ONLY CCRES:
-        top_k_ccres = sorted_distances[self.ge_count:, self.current_sparsity]
-        top_k_ccres = torch.t(top_k_ccres.repeat(size, 1)) + 10 ** -10
+            # equation 20 in the paper. notice that self.current_sparsity = k. ONLY GENES
+            weights_genes = torch.div(T_genes, self.current_gene_sparsity * top_k_genes - sum_top_k_genes)
 
-        # summatory of the nearest k distances ONLY CCRES:
-        sum_top_k_ccres = torch.sum(sorted_distances[self.ge_count:, 0:self.current_sparsity], dim=1)
-        sum_top_k_ccres = torch.t(sum_top_k_ccres.repeat(size, 1))
+            # distance to the k-th nearest neighbor ONLY CCRES:
+            top_k_ccres = sorted_distances[self.ge_count:, self.current_sparsity]
+            top_k_ccres = torch.t(top_k_ccres.repeat(size, 1)) + 10 ** -10
 
-        # numerator of equation 20 in the paper ONLY CCRES
-        T_ccres = top_k_ccres - distances[self.ge_count:, ]
+            # summatory of the nearest k distances ONLY CCRES:
+            sum_top_k_ccres = torch.sum(sorted_distances[self.ge_count:, 0:self.current_sparsity], dim=1)
+            sum_top_k_ccres = torch.t(sum_top_k_ccres.repeat(size, 1))
 
-        # equation 20 in the paper. notice that self.current_sparsity = k. ONLY CCRES
-        weights_ccres = torch.div(T_ccres, self.current_sparsity * top_k_ccres - sum_top_k_ccres)
+            # numerator of equation 20 in the paper ONLY CCRES
+            T_ccres = top_k_ccres - distances[self.ge_count:, ]
 
-        weights_diff = torch.cat((weights_genes, weights_ccres))
+            # equation 20 in the paper. notice that self.current_sparsity = k. ONLY CCRES
+            weights_ccres = torch.div(T_ccres, self.current_sparsity * top_k_ccres - sum_top_k_ccres)
 
-        sorted_distances = None
-        T_genes = None
-        T_ccres = None
-        top_k_genes = None
-        top_k_ccres = None
-        sum_top_k_genes = None
-        sum_top_k_ccres = None
-        torch.cuda.empty_cache()
+            weights_diff = torch.cat((weights_genes, weights_ccres))
 
-        weights = weights_diff.relu().to(self.device)
+            sorted_distances = None
+            T_genes = None
+            T_ccres = None
+            top_k_genes = None
+            top_k_ccres = None
+            sum_top_k_genes = None
+            sum_top_k_ccres = None
+            torch.cuda.empty_cache()
+
+            weights = weights_diff.relu().to(self.device)
 
 
-        '''
-        # distance to the k-th nearest neighbor:
-        top_k = sorted_distances[:, self.current_sparsity]
-        top_k = torch.t(top_k.repeat(size, 1)) + 10 ** -10
-
-        # summatory of the nearest k distances:
-        sum_top_k = torch.sum(sorted_distances[:, 0:self.current_sparsity], dim=1)
-        sum_top_k = torch.t(sum_top_k.repeat(size, 1))
-        sorted_distances = None
-        torch.cuda.empty_cache()
-
-        # numerator of equation 20 in the paper
-        T = top_k - distances
-        distances = None
-        torch.cuda.empty_cache()
-
-        # equation 20 in the paper. notice that self.current_sparsity = k.
-        weights = torch.div(T, self.current_sparsity * top_k - sum_top_k)
-        T = None
-        top_k = None
-        sum_top_k = None
-        torch.cuda.empty_cache()
-        # notice that the following line is also part of equation 20
-        weights = weights.relu().to(self.device)
-        '''
         # now at this point, after computing the generative model of the
         # k sparse graph being based on node divergences and similarities,
         # we add weight to some points of the connectivity distribution being based
@@ -963,7 +953,10 @@ class AdaGAE():
         link_scores_tensor = torch.Tensor(self.current_link_score).to(self.device)
         element_max_distance_scores = torch.max(link_scores_tensor, dim=0)[0]
         element_max_similarity_scores = torch.max(weights, dim=0)[0]
-        scaled_link_scores = (link_scores_tensor.t() * element_max_similarity_scores / element_max_distance_scores)
+        if self.attributed:
+            scaled_link_scores = (link_scores_tensor.t() * element_max_similarity_scores / element_max_distance_scores)
+        else:
+            scaled_link_scores = (link_scores_tensor.t() / element_max_distance_scores)
         scaled_link_scores = scaled_link_scores.t()
 
         assert not np.isnan(weights.detach().cpu().numpy().sum())
