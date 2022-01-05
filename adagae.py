@@ -951,8 +951,8 @@ class AdaGAE():
             self.current_link_score = self.current_link_score * self.kendall_matrix.detach().numpy()
 
         link_scores_tensor = torch.Tensor(self.current_link_score).to(self.device)
-        element_max_distance_scores = torch.max(link_scores_tensor, dim=0)[0]
-        element_max_similarity_scores = torch.max(weights, dim=0)[0]
+        element_max_distance_scores = torch.max(link_scores_tensor, dim=1)[0]
+        element_max_similarity_scores = torch.max(weights, dim=1)[0]
         if self.attributed:
             scaled_link_scores = (link_scores_tensor.t() * element_max_similarity_scores / element_max_distance_scores)
         else:

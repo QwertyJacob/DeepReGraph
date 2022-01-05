@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 plt.rcParams["figure.figsize"] = (10, 10)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-genes_to_pick = 0
+genes_to_pick = 100
 
 learning_rate = 5 * 10 ** -3
 
@@ -48,16 +48,13 @@ if __name__ == '__main__':
                  ge_class_labels,
                  tensorboard,
                  device=device,
-                 datapath = datapath,
-                 learning_rate=learning_rate,
-                 attributed=False,
-                 use_kendall_matrix=False)
+                 datapath = datapath)
 
     manual_run(gae,
                max_epoch=10,
                init_sparsity=100,
                sparsity_increment=1,
-               init_gbf=1,
+               init_gbf=0.5,
                final_gbf=0.5,
                init_RQ_loss_weight=0,
                final_RQ_loss_weight=0,
