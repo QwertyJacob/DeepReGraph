@@ -847,13 +847,12 @@ class AdaGAE():
         self.current_rq_loss_weight = action[0]
         self.tensorboard.add_scalar(RQ_LOSS_WEIGHT, float(self.current_rq_loss_weight), self.global_step)
 
-        prev_sparsity = self.current_sparsity
+        self.prev_sparsity = self.current_sparsity
         self.current_sparsity = int(action[1])
         self.current_gene_sparsity = math.ceil(self.current_sparsity / self.global_ccres_over_genes_ratio)
         self.tensorboard.add_scalar(SPARSITY_LABEL, self.current_sparsity, self.global_step)
         self.tensorboard.add_scalar(GENE_SPARSITY_LABEL, self.current_gene_sparsity, self.global_step)
 
-        prev_gbf = self.alpha_D
         self.alpha_D = action[2]
         self.tensorboard.add_scalar(ALPHA_D, float(self.alpha_D),
                                     self.global_step)
@@ -873,38 +872,25 @@ class AdaGAE():
         self.current_rep_agg_loss_weight = action[7]
         self.tensorboard.add_scalar(RP_AGGRESSIVE_LOSS_WEIGHT, self.current_rep_agg_loss_weight, self.global_step)
 
-        prev_alpha_G = self.alpha_G
         self.alpha_G = action[8]
         self.tensorboard.add_scalar(ALPHA_G, self.alpha_G, self.global_step)
 
-        prev_alpha_ATAC = self.alpha_ATAC
         self.alpha_ATAC = action[9]
         self.tensorboard.add_scalar(ALPHA_ATAC, self.alpha_ATAC, self.global_step)
 
-        prev_alpha_METH = self.alpha_METH
         self.alpha_METH = action[10]
         self.tensorboard.add_scalar(ALPHA_METH, self.alpha_METH, self.global_step)
 
-        prev_alpha_ACET = self.alpha_ACET
         self.alpha_ACET = action[11]
         self.tensorboard.add_scalar(ALPHA_ACET, self.alpha_ACET, self.global_step)
 
-        prev_alpha_Z = self.alpha_Z
         self.alpha_Z = action[12]
         self.tensorboard.add_scalar(ALPHA_Z, self.alpha_Z, self.global_step)
 
 
-        if (self.current_sparsity != prev_sparsity) \
-                or (self.alpha_D != prev_gbf) or \
-                (self.alpha_G != prev_alpha_G) or \
-                (self.alpha_Z != prev_alpha_Z) or \
-                (self.alpha_ATAC != prev_alpha_ATAC) or \
-                (self.alpha_METH != prev_alpha_METH) or \
-                (self.alpha_ACET != prev_alpha_ACET):
-
-            self.update_graph()
-            self.current_cluster_number = math.floor((self.ge_count + self.ccre_count) / self.current_sparsity)
-            self.tensorboard.add_scalar(CLUSTER_NUMBER_LABEL, self.current_cluster_number, self.global_step)
+        self.update_graph()
+        self.current_cluster_number = math.floor((self.ge_count + self.ccre_count) / self.current_sparsity)
+        self.tensorboard.add_scalar(CLUSTER_NUMBER_LABEL, self.current_cluster_number, self.global_step)
 
         self.gae_nn.optimizer.zero_grad()
 
@@ -950,65 +936,50 @@ class AdaGAE():
         return init_value + ((final_value - init_value) * (1 / (1 + math.e ** (-1 * (self.iteration - (T/ 2)) / (T/10)))))
 
 
-    '''
-        # DIFFERENTIAL SPARSITY 
-        def compute_S_Z(self, transposed_Z, size):
-
-            distances = distance(transposed_Z, transposed_Z)
-    
-            if not eval: self.tensorboard.add_scalar(EMBEDDING_DIAMETER, distances.median(), self.global_step)
-            distances = torch.max(distances, torch.t(distances))
-            sorted_distances, _ = distances.sort(dim=1)
-    
-            # distance to the k-th nearest neighbor ONLY GENES:
-            top_k_genes = sorted_distances[:self.ge_count, self.current_gene_sparsity]
-            top_k_genes = torch.t(top_k_genes.repeat(size, 1)) + 10 ** -10
-            self.tensorboard.add_scalar(DISTANCE_TO_KNN_TAG, top_k_genes.median(), self.global_step)
-            # summatory of the nearest k distances ONLY GENES:
-            sum_top_k_genes = torch.sum(sorted_distances[:self.ge_count, 0:self.current_gene_sparsity], dim=1)
-            sum_top_k_genes = torch.t(sum_top_k_genes.repeat(size, 1))
-    
-            # numerator of equation 20 in the paper ONLY GENES
-            T_genes = top_k_genes - distances[:self.ge_count, ]
-    
-            # equation 20 in the paper. notice that self.current_sparsity = k. ONLY GENES
-            weights_genes = torch.div(T_genes, self.current_gene_sparsity * top_k_genes - sum_top_k_genes)
-    
-            # distance to the k-th nearest neighbor ONLY CCRES:
-            top_k_ccres = sorted_distances[self.ge_count:, self.current_sparsity]
-            top_k_ccres = torch.t(top_k_ccres.repeat(size, 1)) + 10 ** -10
-    
-            # summatory of the nearest k distances ONLY CCRES:
-            sum_top_k_ccres = torch.sum(sorted_distances[self.ge_count:, 0:self.current_sparsity], dim=1)
-            sum_top_k_ccres = torch.t(sum_top_k_ccres.repeat(size, 1))
-    
-            # numerator of equation 20 in the paper ONLY CCRES
-            T_ccres = top_k_ccres - distances[self.ge_count:, ]
-    
-            # equation 20 in the paper. notice that self.current_sparsity = k. ONLY CCRES
-            weights_ccres = torch.div(T_ccres, self.current_sparsity * top_k_ccres - sum_top_k_ccres)
-    
-            weights_diff = torch.cat((weights_genes, weights_ccres))
-    
-            sorted_distances = None
-            T_genes = None
-            T_ccres = None
-            top_k_genes = None
-            top_k_ccres = None
-            sum_top_k_genes = None
-            sum_top_k_ccres = None
-            torch.cuda.empty_cache()
-    
-            S_Z = weights_diff.relu().to(self.device)
-    
-            return S_Z
-    '''
-
 
     def compute_S_Z(self, transposed_Z):
 
-        embedding_distances = distance(transposed_Z, transposed_Z)
-        return self.CAN_precomputed_dist(embedding_distances, self.current_sparsity)
+        element_count = transposed_Z.shape[1]
+
+        distances = distance(transposed_Z, transposed_Z)
+
+        if not eval: self.tensorboard.add_scalar(EMBEDDING_DIAMETER, distances.median(), self.global_step)
+        distances = torch.max(distances, torch.t(distances))
+        sorted_distances, _ = distances.sort(dim=1)
+
+        # distance to the k-th nearest neighbor ONLY GENES:
+        top_k_genes = sorted_distances[:self.ge_count, self.current_gene_sparsity]
+        top_k_genes = torch.t(top_k_genes.repeat(element_count, 1)) + 10 ** -10
+        self.tensorboard.add_scalar(DISTANCE_TO_KNN_TAG, top_k_genes.median(), self.global_step)
+        # summatory of the nearest k distances ONLY GENES:
+        sum_top_k_genes = torch.sum(sorted_distances[:self.ge_count, 0:self.current_gene_sparsity], dim=1)
+        sum_top_k_genes = torch.t(sum_top_k_genes.repeat(element_count, 1))
+
+        # numerator of equation 20 in the paper ONLY GENES
+        T_genes = top_k_genes - distances[:self.ge_count, ]
+
+        # equation 20 in the paper. notice that self.current_sparsity = k. ONLY GENES
+        weights_genes = torch.div(T_genes, self.current_gene_sparsity * top_k_genes - sum_top_k_genes)
+
+        # distance to the k-th nearest neighbor ONLY CCRES:
+        top_k_ccres = sorted_distances[self.ge_count:, self.current_sparsity]
+        top_k_ccres = torch.t(top_k_ccres.repeat(element_count, 1)) + 10 ** -10
+
+        # summatory of the nearest k distances ONLY CCRES:
+        sum_top_k_ccres = torch.sum(sorted_distances[self.ge_count:, 0:self.current_sparsity], dim=1)
+        sum_top_k_ccres = torch.t(sum_top_k_ccres.repeat(element_count, 1))
+
+        # numerator of equation 20 in the paper ONLY CCRES
+        T_ccres = top_k_ccres - distances[self.ge_count:, ]
+
+        # equation 20 in the paper. notice that self.current_sparsity = k. ONLY CCRES
+        weights_ccres = torch.div(T_ccres, self.current_sparsity * top_k_ccres - sum_top_k_ccres)
+
+        weights_diff = torch.cat((weights_genes, weights_ccres))
+
+        S_Z = weights_diff.relu()
+
+        return S_Z
 
 
     def CAN_precomputed_dist(self, distances, num_neighbors):
@@ -1066,7 +1037,9 @@ class AdaGAE():
         if first_time:
             self.S_Z = torch.zeros(element_count, element_count)
         else:
-            self.S_Z = self.compute_S_Z(transposed_Z=transposed_data_matrix)
+
+            if self.prev_sparsity != self.current_sparsity:
+                self.S_Z = self.compute_S_Z(transposed_Z=transposed_data_matrix)
 
 
         # now at this point, after computing the generative model of the
@@ -1074,19 +1047,19 @@ class AdaGAE():
         # we add weight to some points of the connectivity distribution being based
         # on the explicit graph information.
 
+        if self.prev_sparsity != self.current_sparsity:
+            self.S_D = self.compute_S_D()
+            self.S_G = torch.zeros(element_count, element_count)
+            self.S_G[:self.ge_count,:self.ge_count] = self.CAN_precomputed_dist(self.D_G,self.current_gene_sparsity)
 
-        self.S_D = self.compute_S_D()
-        self.S_G = torch.zeros(element_count, element_count)
-        self.S_G[:self.ge_count,:self.ge_count] = self.CAN_precomputed_dist(self.D_G,self.current_gene_sparsity)
+            self.S_ATAC = torch.zeros(element_count, element_count)
+            self.S_ATAC[self.ge_count:, self.ge_count:] = self.CAN_precomputed_dist(self.D_ATAC, self.current_sparsity)
 
-        self.S_ATAC = torch.zeros(element_count, element_count)
-        self.S_ATAC[self.ge_count:, self.ge_count:] = self.CAN_precomputed_dist(self.D_ATAC, self.current_sparsity)
+            self.S_ACET = torch.zeros(element_count, element_count)
+            self.S_ACET[self.ge_count:, self.ge_count:] = self.CAN_precomputed_dist(self.D_ACET, self.current_sparsity)
 
-        self.S_ACET = torch.zeros(element_count, element_count)
-        self.S_ACET[self.ge_count:, self.ge_count:] = self.CAN_precomputed_dist(self.D_ACET, self.current_sparsity)
-
-        self.S_METH = torch.zeros(element_count, element_count)
-        self.S_METH[self.ge_count:, self.ge_count:] = self.CAN_precomputed_dist(self.D_METH, self.current_sparsity)
+            self.S_METH = torch.zeros(element_count, element_count)
+            self.S_METH[self.ge_count:, self.ge_count:] = self.CAN_precomputed_dist(self.D_METH, self.current_sparsity)
 
 
         S = (self.S_Z * self.alpha_Z) + \
