@@ -35,7 +35,7 @@ learning_rate = 5 * 10 ** -3
 if __name__ == '__main__':
 
 
-    modelname = '/champion'
+    modelname = '/new_champion'
     tensorboard = SummaryWriter(LOG_DIR + modelname)
 
     X, ge_count, ccre_count, distance_matrices, links, kendall_matrix, ge_class_labels = data_preprocessing(datapath, reports_path, genes_to_pick, device)
@@ -61,10 +61,6 @@ if __name__ == '__main__':
                final_attractive_loss_weight=3,
                init_repulsive_loss_weight=1,
                final_repulsive_loss_weight=0.1,
-               init_lambda_attractive=0.5,
-               final_lambda_attractive=0.5,
-               init_lambda_repulsive=0.5,
-               final_lambda_repulsive=0.5,
                max_iter=70
                )
     #fixed_spars_run(gae)

@@ -612,9 +612,9 @@ class AdaGAE():
         # adj is A tilded, it is the symmetric modification of the p distribution
         # raw_adj is the p distribution before the symetrization.
         if self.pre_trained:
-            self.adj, self.raw_adj = self.compute_P(self.gae_nn.embedding.t().cpu())
+            self.adj, self.raw_adj = self.compute_P(self.gae_nn.embedding.cpu())
         else:
-            self.adj, self.raw_adj = self.compute_P(self.X.cpu().t(), first_time=True)
+            self.adj, self.raw_adj = self.compute_P(self.X.cpu(), first_time=True)
 
         self.norm_adj = get_normalized_adjacency_matrix(self.adj)
         self.norm_adj = self.norm_adj.to_sparse()
@@ -635,7 +635,7 @@ class AdaGAE():
 
 
     def update_graph(self):
-        self.adj, self.raw_adj = self.compute_P(self.gae_nn.embedding.t().cpu())
+        self.adj, self.raw_adj = self.compute_P(self.gae_nn.embedding.cpu())
         self.adj = self.adj.detach()
         self.raw_adj = self.raw_adj.detach()
         # threshold = 0.5
@@ -936,21 +936,18 @@ class AdaGAE():
         return init_value + ((final_value - init_value) * (1 / (1 + math.e ** (-1 * (self.iteration - (T/ 2)) / (T/10)))))
 
 
+    def CAN_precomputed_dist(self, distances):
 
-    def compute_S_Z(self, transposed_Z):
+        element_count = distances.shape[0]
 
-        element_count = transposed_Z.shape[1]
-
-        distances = distance(transposed_Z, transposed_Z)
-
-        if not eval: self.tensorboard.add_scalar(EMBEDDING_DIAMETER, distances.median(), self.global_step)
+        # symmetrize:
         distances = torch.max(distances, torch.t(distances))
+
         sorted_distances, _ = distances.sort(dim=1)
 
         # distance to the k-th nearest neighbor ONLY GENES:
         top_k_genes = sorted_distances[:self.ge_count, self.current_gene_sparsity]
         top_k_genes = torch.t(top_k_genes.repeat(element_count, 1)) + 10 ** -10
-        self.tensorboard.add_scalar(DISTANCE_TO_KNN_TAG, top_k_genes.median(), self.global_step)
         # summatory of the nearest k distances ONLY GENES:
         sum_top_k_genes = torch.sum(sorted_distances[:self.ge_count, 0:self.current_gene_sparsity], dim=1)
         sum_top_k_genes = torch.t(sum_top_k_genes.repeat(element_count, 1))
@@ -977,38 +974,7 @@ class AdaGAE():
 
         weights_diff = torch.cat((weights_genes, weights_ccres))
 
-        S_Z = weights_diff.relu()
-
-        return S_Z
-
-
-    def CAN_precomputed_dist(self, distances, num_neighbors):
-
-        size = distances.shape[0]
-
-        # symmetrize:
-        distances = torch.max(distances, torch.t(distances))
-
-        sorted_distances, _ = distances.sort(dim=1)
-        top_k = sorted_distances[:, num_neighbors]
-        top_k = torch.t(top_k.repeat(size, 1)) + 10 ** -10
-
-        sum_top_k = torch.sum(sorted_distances[:, 0:num_neighbors], dim=1)
-        sum_top_k = torch.t(sum_top_k.repeat(size, 1))
-
-        T = top_k - distances
-
-        weights = torch.div(T, num_neighbors * top_k - sum_top_k)
-
-        weights = weights.relu()
-
-        weights = (weights + weights.t()) / 2
-
-        if not self.add_self_loops_euclidean:
-            weights.fill_diagonal_(0)
-
-        #row-wise scaling
-        weights /= (weights.max(dim=1)[0] + 1e-10).reshape([-1, 1])
+        weights = weights_diff.relu()
 
         return weights
 
@@ -1028,44 +994,52 @@ class AdaGAE():
         return S_D
 
 
-    def compute_P(self, transposed_data_matrix, first_time=False):
+    def compute_P(self, prev_embedding, first_time=False):
         """
 
         """
-        element_count = transposed_data_matrix.shape[1]
+
+        tras_prev_embedding = prev_embedding.t()
+
+        element_count = tras_prev_embedding.shape[1]
 
         if first_time:
-            self.S_Z = torch.zeros(element_count, element_count)
+            self.D_Z = torch.ones(element_count, element_count)
         else:
-            if self.prev_sparsity != self.current_sparsity:
-                self.S_Z = self.compute_S_Z(transposed_Z=transposed_data_matrix)
-
+            self.D_Z = distance(tras_prev_embedding, tras_prev_embedding)
+            # row-wise scaling
+            self.D_Z /= (self.D_Z.max(dim=1)[0] + 1e-10).reshape([-1, 1])
 
         # now at this point, after computing the generative model of the
         # k sparse graph being based on current embedding's divergences and similarities,
         # we add weight to some points of the connectivity distribution being based
         # on the explicit graph information.
 
+        alpha_CCRES = (self.alpha_ATAC + self.alpha_ACET + self.alpha_METH ) / 3
+        alpha_symm = (alpha_CCRES + self.alpha_G + self.alpha_Z) / 3
+
         if first_time or (self.prev_sparsity != self.current_sparsity):
             self.S_D = self.compute_S_D()
 
-
-            self.S_G = torch.zeros(element_count, element_count)
-            self.S_G[:self.ge_count,:self.ge_count] = self.CAN_precomputed_dist(self.D_G,self.current_gene_sparsity)
-
+            D_G = self.D_G / (self.D_G.max(dim=1)[0] + 1e-10).reshape([-1, 1])
 
             D_CCRES = (self.D_ATAC * self.alpha_ATAC) + (self.D_ACET * self.alpha_ACET) + (self.D_METH * self.alpha_METH)
             D_CCRES /= (self.alpha_ATAC + self.alpha_ACET + self.alpha_METH + 1e-10)
+            D_CCRES /=(D_CCRES.max(dim=1)[0] + 1e-10).reshape([-1, 1])
 
-            self.S_CCRES = torch.zeros(element_count, element_count)
-            self.S_CCRES[self.ge_count:, self.ge_count:] = self.CAN_precomputed_dist(D_CCRES, self.current_sparsity)
 
-        alpha_CCRES = (self.alpha_ATAC + self.alpha_ACET + self.alpha_METH) / 3
 
-        S = (self.S_Z * self.alpha_Z) + \
-            (self.S_D * self.alpha_D) + \
-            (self.S_G * self.alpha_G) + \
-            (self.S_CCRES * alpha_CCRES)
+            D = torch.ones(element_count, element_count)
+            D[:self.ge_count, :self.ge_count] = (D_G * self.alpha_G)
+            D[self.ge_count:, self.ge_count:] = (D_CCRES * alpha_CCRES)
+
+            D += (self.D_Z * self.alpha_Z)
+
+            self.S_symm = self.CAN_precomputed_dist(D)
+
+
+        S = (self.S_symm * alpha_symm) + \
+            (self.S_D * self.alpha_D)
 
 
         # row-wise normalization (for covenverting to probability distribution)
