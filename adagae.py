@@ -394,7 +394,12 @@ RP_AGGRESSIVE_LOSS: str = 'Rep Aggressive Loss'
 RP_AGGRESSIVE_LOSS_WEIGHT: str = 'Rep Aggressive Loss Weight'
 TOTAL_LOSS_LABEL: str = 'Total_Loss'
 RQ_LOSS_WEIGHT: str = 'RQ_Loss_weight'
-GENETIC_BALANCE_FACTOR_LABEL: str = 'GeneticBalanceFactor'
+ALPHA_D: str = 'Alpha_D'
+ALPHA_G: str = 'Alpha_G'
+ALPHA_METH: str = 'Alpha_METH'
+ALPHA_ACET: str = 'Alpha_ACET'
+ALPHA_ATAC: str = 'Alpha_ATAC'
+ALPHA_Z: str = 'Alpha_Z'
 GENOMIC_C_LABEL: str = 'GenomicC'
 REPULSIVE_CE_LOSS_WEIGHT_LABEL: str = 'RepulsiveCELossWeight'
 ATTRACTIVE_CE_LOSS_WEIGHT_LABEL: str = 'AttractiveCELossWeight'
@@ -850,7 +855,7 @@ class AdaGAE():
 
         prev_gbf = self.alpha_D
         self.alpha_D = action[2]
-        self.tensorboard.add_scalar(GENETIC_BALANCE_FACTOR_LABEL, float(self.alpha_D),
+        self.tensorboard.add_scalar(ALPHA_D, float(self.alpha_D),
                                     self.global_step)
 
         self.current_attractive_loss_weight = action[3]
@@ -867,6 +872,22 @@ class AdaGAE():
 
         self.current_rep_agg_loss_weight = action[7]
         self.tensorboard.add_scalar(RP_AGGRESSIVE_LOSS_WEIGHT, self.current_rep_agg_loss_weight, self.global_step)
+
+        self.alpha_G = action[8]
+        self.tensorboard.add_scalar(ALPHA_G, self.alpha_G, self.global_step)
+
+        self.alpha_ATAC = action[9]
+        self.tensorboard.add_scalar(ALPHA_ATAC, self.alpha_ATAC, self.global_step)
+
+        self.alpha_METH = action[10]
+        self.tensorboard.add_scalar(ALPHA_METH, self.alpha_METH, self.global_step)
+
+        self.alpha_ACET = action[11]
+        self.tensorboard.add_scalar(ALPHA_ACET, self.alpha_ACET, self.global_step)
+
+        self.alpha_Z = action[12]
+        self.tensorboard.add_scalar(ALPHA_Z, self.alpha_Z, self.global_step)
+
 
         if (self.current_sparsity != prev_sparsity) or (self.alpha_D != prev_gbf):
             self.update_graph()
@@ -1180,13 +1201,18 @@ class AdaGAE():
 
     def run_1_epoch(self,
                     current_sparsity=200,
-                    gbf=0,
+                    alpha_D=0,
                     rq_loss_weight=0,
                     attractive_loss_weight=1,
                     repulsive_loss_weight=1,
                     lambda_attractive=0.5,
                     lambda_repulsive=0.5,
                     agg_repulsive=0,
+                    alpha_G=1,
+                    alpha_ATAC=1,
+                    alpha_ACET=1,
+                    alpha_METH=1,
+                    alpha_Z=1,
                     max_iter=15):
 
         self.epoch_losses = []
@@ -1195,12 +1221,17 @@ class AdaGAE():
 
             dummy_action = torch.Tensor([rq_loss_weight,
                                          current_sparsity,
-                                         gbf,
+                                         alpha_D,
                                          attractive_loss_weight,
                                          lambda_attractive,
                                          repulsive_loss_weight,
                                          lambda_repulsive,
-                                         agg_repulsive]).to(self.device)
+                                         agg_repulsive,
+                                         alpha_G,
+                                         alpha_ATAC,
+                                         alpha_METH,
+                                         alpha_ACET,
+                                         alpha_Z]).to(self.device)
 
             loss = self.step(dummy_action)
 
@@ -1222,8 +1253,18 @@ def manual_run(gae,
                max_epoch=10,
                init_sparsity=200,
                sparsity_increment=40,
-               init_gbf=0.7,
-               final_gbf=0,
+               init_alpha_D=0,
+               final_alpha_D=1,
+               init_alpha_G=1,
+               final_alpha_G=0,
+               init_alpha_ATAC=1,
+               final_alpha_ATAC=0,
+               init_alpha_ACET=1,
+               final_alpha_ACET=0,
+               init_alpha_METH=1,
+               final_alpha_METH=0,
+               init_alpha_Z=0,
+               final_alpha_Z=1,
                init_RQ_loss_weight=0.1,
                final_RQ_loss_weight=1,
                init_attractive_loss_weight=0.1,
@@ -1249,7 +1290,12 @@ def manual_run(gae,
 
         current_sparsity += sparsity_increment
 
-        current_genetic_balance_factor = gae.get_dinamic_param(init_gbf, final_gbf, T)
+        alpha_D = gae.get_dinamic_param(init_alpha_D, final_alpha_D, T)
+        alpha_G = gae.get_dinamic_param(init_alpha_G, final_alpha_G, T)
+        alpha_ATAC = gae.get_dinamic_param(init_alpha_ATAC, final_alpha_ATAC, T)
+        alpha_METH = gae.get_dinamic_param(init_alpha_METH, final_alpha_METH, T)
+        alpha_ACET = gae.get_dinamic_param(init_alpha_ACET, final_alpha_ACET, T)
+        alpha_Z = gae.get_dinamic_param(init_alpha_Z, final_alpha_Z, T)
         current_rq_loss_weight = gae.get_dinamic_param(init_RQ_loss_weight, final_RQ_loss_weight, T)
 
         current_attractive_loss_weight = gae.get_dinamic_param(init_attractive_loss_weight,
@@ -1273,12 +1319,17 @@ def manual_run(gae,
 
             dummy_action = torch.Tensor([current_rq_loss_weight,
                                          current_sparsity,
-                                         current_genetic_balance_factor,
+                                         alpha_D,
                                          current_attractive_loss_weight,
                                          current_lambda_attractive,
                                          current_repulsive_loss_weight,
                                          current_lambda_repulsive,
-                                         current_aggresive_rep_loss_weight]).to(gae.device)
+                                         current_aggresive_rep_loss_weight,
+                                         alpha_G,
+                                         alpha_ATAC,
+                                         alpha_METH,
+                                         alpha_ACET,
+                                         alpha_Z]).to(gae.device)
 
             loss = gae.step(dummy_action)
 
@@ -1291,7 +1342,7 @@ def manual_run(gae,
         print('epoch:%3d,' % epoch,
               'reward:%3d,' % reward,
               'mean loss:%3d,' % mean_loss,
-              'gbf: %6.3f' % current_genetic_balance_factor,
+              'gbf: %6.3f' % alpha_D,
               'CE_attr_w: %6.3f' % current_attractive_loss_weight,
               'CE_rep_w: %6.3f' % current_repulsive_loss_weight,
               'RQ_w: %6.3f' % current_rq_loss_weight,
@@ -1309,89 +1360,12 @@ def manual_run(gae,
 
 
 
-def fixed_spars_run(gae,
-               current_sparsity=200,
-               init_gbf=0.7,
-               final_gbf=0,
-               init_RQ_loss_weight=0.1,
-               final_RQ_loss_weight=1,
-               init_attractive_loss_weight=0.1,
-               final_attractive_loss_weight=1,
-               init_repulsive_loss_weight=1,
-               final_repulsive_loss_weight=0.1,
-               init_lambda_attractive=0.5,
-               final_lambda_attractive=0.5,
-               init_lambda_repulsive=0.5,
-               final_lambda_repulsive=0.5,
-               init_agg_repulsive=1,
-               final_agg_repulsive=0.1,
-               max_iter=15):
-
-
-    gae.epoch_losses = []
-
-    for i in range(max_iter):
-        T = max_iter
-
-        current_genetic_balance_factor = gae.get_dinamic_param(init_gbf, final_gbf, T)
-
-        current_rq_loss_weight = gae.get_dinamic_param(init_RQ_loss_weight, final_RQ_loss_weight, T)
-
-        current_attractive_loss_weight = gae.get_dinamic_param(init_attractive_loss_weight,
-                                                                final_attractive_loss_weight, T)
-
-        current_repulsive_loss_weight = gae.get_dinamic_param(init_repulsive_loss_weight,
-                                                                final_repulsive_loss_weight, T)
-
-        current_lambda_attractive = gae.get_dinamic_param(init_lambda_attractive,
-                                                          final_lambda_attractive, T)
-
-        current_lambda_repulsive = gae.get_dinamic_param(init_lambda_repulsive,
-                                                        final_lambda_repulsive, T)
-
-        current_aggresive_rep_loss_weight = gae.get_dinamic_param(init_agg_repulsive,
-                                                        final_agg_repulsive, T)
-
-        dummy_action = torch.Tensor([current_rq_loss_weight,
-                                      current_sparsity,
-                                      current_genetic_balance_factor,
-                                      current_attractive_loss_weight,
-                                      current_lambda_attractive,
-                                      current_repulsive_loss_weight,
-                                      current_lambda_repulsive,
-                                      current_aggresive_rep_loss_weight]).to(gae.device)
-
-
-        loss = gae.step(dummy_action)
-
-        gae.epoch_losses.append(loss.item())
-
-        print('gbf: %6.3f' % current_genetic_balance_factor,
-              'CE_attr_w: %6.3f' % current_attractive_loss_weight,
-              'CE_rep_w: %6.3f' % current_repulsive_loss_weight,
-              'RQ_w: %6.3f' % current_rq_loss_weight,
-              'AR_w: %6.3f' % current_aggresive_rep_loss_weight,
-              'spars:%3d, ' % gae.current_sparsity,
-              'curr_clust_num:%3d,' % gae.current_cluster_number)
-
-
-    reward = gae.evaluate()
-    print('reward ',reward)
-
-    if i%10==0:
-      gae.plot_classes()
-
-
-
-
-
-
 def adagae_run(action_index, actions_array, adagae_object, curr_sparsity):
 
   curr_action = actions_array[action_index]
   print('Curr_action: [GBF: ',curr_action[0], ', ATTR: ',curr_action[1], ', REP: ', curr_action[2], ']')
   adagae_object.run_1_epoch(current_sparsity = curr_sparsity,
-                            gbf = curr_action[0],
+                            alpha_D= curr_action[0],
                             attractive_loss_weight = curr_action[1],
                             repulsive_loss_weight = curr_action[2],
                             )
