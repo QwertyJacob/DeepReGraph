@@ -873,23 +873,35 @@ class AdaGAE():
         self.current_rep_agg_loss_weight = action[7]
         self.tensorboard.add_scalar(RP_AGGRESSIVE_LOSS_WEIGHT, self.current_rep_agg_loss_weight, self.global_step)
 
+        prev_alpha_G = self.alpha_G
         self.alpha_G = action[8]
         self.tensorboard.add_scalar(ALPHA_G, self.alpha_G, self.global_step)
 
+        prev_alpha_ATAC = self.alpha_ATAC
         self.alpha_ATAC = action[9]
         self.tensorboard.add_scalar(ALPHA_ATAC, self.alpha_ATAC, self.global_step)
 
+        prev_alpha_METH = self.alpha_METH
         self.alpha_METH = action[10]
         self.tensorboard.add_scalar(ALPHA_METH, self.alpha_METH, self.global_step)
 
+        prev_alpha_ACET = self.alpha_ACET
         self.alpha_ACET = action[11]
         self.tensorboard.add_scalar(ALPHA_ACET, self.alpha_ACET, self.global_step)
 
+        prev_alpha_Z = self.alpha_Z
         self.alpha_Z = action[12]
         self.tensorboard.add_scalar(ALPHA_Z, self.alpha_Z, self.global_step)
 
 
-        if (self.current_sparsity != prev_sparsity) or (self.alpha_D != prev_gbf):
+        if (self.current_sparsity != prev_sparsity) \
+                or (self.alpha_D != prev_gbf) or \
+                (self.alpha_G != prev_alpha_G) or \
+                (self.alpha_Z != prev_alpha_Z) or \
+                (self.alpha_ATAC != prev_alpha_ATAC) or \
+                (self.alpha_METH != prev_alpha_METH) or \
+                (self.alpha_ACET != prev_alpha_ACET):
+
             self.update_graph()
             self.current_cluster_number = math.floor((self.ge_count + self.ccre_count) / self.current_sparsity)
             self.tensorboard.add_scalar(CLUSTER_NUMBER_LABEL, self.current_cluster_number, self.global_step)
