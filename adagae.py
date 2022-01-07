@@ -1048,25 +1048,24 @@ class AdaGAE():
 
         if first_time or (self.prev_sparsity != self.current_sparsity):
             self.S_D = self.compute_S_D()
+
+
             self.S_G = torch.zeros(element_count, element_count)
             self.S_G[:self.ge_count,:self.ge_count] = self.CAN_precomputed_dist(self.D_G,self.current_gene_sparsity)
 
-            self.S_ATAC = torch.zeros(element_count, element_count)
-            self.S_ATAC[self.ge_count:, self.ge_count:] = self.CAN_precomputed_dist(self.D_ATAC, self.current_sparsity)
 
-            self.S_ACET = torch.zeros(element_count, element_count)
-            self.S_ACET[self.ge_count:, self.ge_count:] = self.CAN_precomputed_dist(self.D_ACET, self.current_sparsity)
+            D_CCRES = (self.D_ATAC * self.alpha_ATAC) + (self.D_ACET * self.alpha_ACET) + (self.D_METH * self.alpha_METH)
+            D_CCRES /= (self.alpha_ATAC + self.alpha_ACET + self.alpha_METH)
 
-            self.S_METH = torch.zeros(element_count, element_count)
-            self.S_METH[self.ge_count:, self.ge_count:] = self.CAN_precomputed_dist(self.D_METH, self.current_sparsity)
+            self.S_CCRES = torch.zeros(element_count, element_count)
+            self.S_CCRES[self.ge_count:, self.ge_count:] = self.CAN_precomputed_dist(D_CCRES, self.current_sparsity)
 
+        alpha_CCRES = (self.alpha_ATAC + self.alpha_ACET + self.alpha_METH) / 3
 
         S = (self.S_Z * self.alpha_Z) + \
             (self.S_D * self.alpha_D) + \
             (self.S_G * self.alpha_G) + \
-            (self.S_ATAC * self.alpha_ATAC) + \
-            (self.S_METH * self.alpha_METH) + \
-            (self.S_ACET * self.alpha_ACET)
+            (self.S_CCRES * alpha_CCRES)
 
 
         # row-wise normalization (for covenverting to probability distribution)
