@@ -1055,7 +1055,7 @@ class AdaGAE():
 
 
             D_CCRES = (self.D_ATAC * self.alpha_ATAC) + (self.D_ACET * self.alpha_ACET) + (self.D_METH * self.alpha_METH)
-            D_CCRES /= (self.alpha_ATAC + self.alpha_ACET + self.alpha_METH)
+            D_CCRES /= (self.alpha_ATAC + self.alpha_ACET + self.alpha_METH + 1e-10)
 
             self.S_CCRES = torch.zeros(element_count, element_count)
             self.S_CCRES[self.ge_count:, self.ge_count:] = self.CAN_precomputed_dist(D_CCRES, self.current_sparsity)

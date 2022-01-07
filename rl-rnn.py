@@ -209,7 +209,7 @@ hist_length = 5
 
 plt.rcParams["figure.figsize"] = (10, 10)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-genes_to_pick = 0
+genes_to_pick = 100
 
 learning_rate = 5 * 10 ** -3
 

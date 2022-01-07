@@ -57,8 +57,6 @@ if __name__ == '__main__':
                sparsity_increment=1,
                init_alpha_D=0.5,
                final_alpha_D=0.5,
-               init_RQ_loss_weight=0,
-               final_RQ_loss_weight=0,
                init_attractive_loss_weight=0.1,
                final_attractive_loss_weight=3,
                init_repulsive_loss_weight=1,
@@ -67,8 +65,6 @@ if __name__ == '__main__':
                final_lambda_attractive=0.5,
                init_lambda_repulsive=0.5,
                final_lambda_repulsive=0.5,
-               init_agg_repulsive=0,
-               final_agg_repulsive=0,
                max_iter=70
                )
     #fixed_spars_run(gae)
