@@ -583,7 +583,7 @@ class AdaGAE():
                                 self.learning_rate,
                                 self.datapath).to(self.device)
         self.current_prediction = None
-        self.current_sparsity = self.init_sparsity
+        self.current_sparsity = self.prev_sparsity = self.init_sparsity
         self.current_gene_sparsity = math.ceil(self.current_sparsity / self.global_ccres_over_genes_ratio)
         if self.current_gene_sparsity == 0: self.current_gene_sparsity += 1
         self.current_genomic_slope = self.init_genomic_slope
@@ -1037,7 +1037,6 @@ class AdaGAE():
         if first_time:
             self.S_Z = torch.zeros(element_count, element_count)
         else:
-
             if self.prev_sparsity != self.current_sparsity:
                 self.S_Z = self.compute_S_Z(transposed_Z=transposed_data_matrix)
 
@@ -1047,7 +1046,7 @@ class AdaGAE():
         # we add weight to some points of the connectivity distribution being based
         # on the explicit graph information.
 
-        if self.prev_sparsity != self.current_sparsity:
+        if first_time or (self.prev_sparsity != self.current_sparsity):
             self.S_D = self.compute_S_D()
             self.S_G = torch.zeros(element_count, element_count)
             self.S_G[:self.ge_count,:self.ge_count] = self.CAN_precomputed_dist(self.D_G,self.current_gene_sparsity)
