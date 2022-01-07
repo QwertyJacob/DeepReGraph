@@ -1064,18 +1064,22 @@ class AdaGAE():
 
 
         self.S_D = self.compute_S_D()
-
+        print(self.S_D.device)
         self.S_G = torch.zeros(element_count, element_count)
         self.S_G[:self.ge_count,:self.ge_count] = self.CAN_precomputed_dist(self.D_G,self.current_gene_sparsity)
+        print(self.S_D.device)
 
         self.S_ATAC = torch.zeros(element_count, element_count)
         self.S_ATAC[self.ge_count:, self.ge_count:] = self.CAN_precomputed_dist(self.D_ATAC, self.current_sparsity)
+        print(self.S_D.device)
 
         self.S_ACET = torch.zeros(element_count, element_count)
         self.S_ACET[self.ge_count:, self.ge_count:] = self.CAN_precomputed_dist(self.D_ACET, self.current_sparsity)
+        print(self.S_D.device)
 
         self.S_METH = torch.zeros(element_count, element_count)
         self.S_METH[self.ge_count:, self.ge_count:] = self.CAN_precomputed_dist(self.D_METH, self.current_sparsity)
+        print(self.S_D.device)
 
 
         S = (self.S_Z * self.alpha_Z) + \
