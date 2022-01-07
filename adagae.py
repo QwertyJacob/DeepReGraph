@@ -614,7 +614,7 @@ class AdaGAE():
         if self.pre_trained:
             self.adj, self.raw_adj = self.compute_P(self.gae_nn.embedding.t().cpu())
         else:
-            self.adj, self.raw_adj = self.compute_P(self.X.t(), first_time=True)
+            self.adj, self.raw_adj = self.compute_P(self.X.cpu().t(), first_time=True)
 
         self.norm_adj = get_normalized_adjacency_matrix(self.adj)
         self.norm_adj = self.norm_adj.to_sparse()
