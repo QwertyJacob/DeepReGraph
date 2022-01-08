@@ -35,10 +35,16 @@ learning_rate = 5 * 10 ** -3
 if __name__ == '__main__':
 
 
-    modelname = '/new_champion_7'
+    modelname = '/new_champion_8'
     tensorboard = SummaryWriter(LOG_DIR + modelname)
 
-    X, ge_count, ccre_count, distance_matrices, links, kendall_matrix, ge_class_labels = data_preprocessing(datapath, reports_path, genes_to_pick, device)
+    wk_atac = 0
+    wk_acet = 1
+    wk_meth = 0
+
+    X, ge_count, ccre_count, distance_matrices, links, kendall_matrix, ge_class_labels = \
+        data_preprocessing(datapath, reports_path, genes_to_pick,
+                           wk_atac=wk_atac, wk_acet=wk_acet, wk_meth=wk_meth, device=device)
 
     gae = AdaGAE(X,
                  ge_count,
@@ -54,14 +60,25 @@ if __name__ == '__main__':
     manual_run(gae,
                max_epoch=10,
                init_sparsity=100,
-               sparsity_increment=1,
-               init_alpha_D=0.5,
-               final_alpha_D=0.5,
+               sparsity_increment=30,
+               init_alpha_D=1,
+               final_alpha_D=0.7,
+               init_alpha_G=0.04,
+               final_alpha_G=0,
+               init_alpha_ATAC=0.03,
+               final_alpha_ATAC=0,
+               init_alpha_ACET=0.03,
+               final_alpha_ACET=0,
+               init_alpha_METH=0.03,
+               final_alpha_METH=0,
+               init_alpha_Z=0.5,
+               final_alpha_Z=1,
                init_attractive_loss_weight=0.1,
                final_attractive_loss_weight=3,
                init_repulsive_loss_weight=1,
                final_repulsive_loss_weight=0.1,
-               max_iter=70
-               )
+               max_iter=30)
+
+    tensorboard.close()
     #fixed_spars_run(gae)
 

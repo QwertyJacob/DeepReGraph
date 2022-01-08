@@ -129,7 +129,7 @@ def get_distance_matrices(X, ge_count, ccre_count):
     return ge_distances, atac_distances, acet_distances, met_distances
 
 
-def get_kendall_matrix(X, ge_count, ccre_count):
+def get_kendall_matrix(X, ge_count, ccre_count, wk_atac=0, wk_acet=1, wk_meth=0):
 
     numpy_X = X.cpu().numpy()
 
@@ -185,17 +185,23 @@ def get_kendall_matrix(X, ge_count, ccre_count):
     # gene_exp_slopes = (gene_exp_slopes - gene_exp_slopes.min()) / (gene_exp_slopes.max()- gene_exp_slopes.min())
 
     atac_slopes = np.array(atac_slopes)
+    atac_slopes = np.sign(atac_slopes)
     # atac_slopes = (atac_slopes - atac_slopes.min()) / (atac_slopes.max()- atac_slopes.min())
 
     met_slopes = np.array(met_slopes)
+    met_slopes = np.sign(met_slopes)
     # met_slopes = (met_slopes - met_slopes.min()) / (met_slopes.max()- met_slopes.min())
 
     acet_slopes = np.array(acet_slopes)
+    acet_slopes = np.sign(acet_slopes)
     # acet_slopes = (acet_slopes - acet_slopes.min()) / (acet_slopes.max()- acet_slopes.min())
 
     dim = ge_count + ccre_count
     kendall_matrix = torch.zeros(dim, dim)
-    ccre_slopes = (atac_slopes + acet_slopes - met_slopes) / 3
+
+    w_mean_denominator = wk_atac + wk_acet + wk_meth
+
+    ccre_slopes = ((wk_atac * atac_slopes) + (wk_acet * acet_slopes) - (wk_meth * met_slopes)) / w_mean_denominator
 
     ccre_trend_upright_submatrix = np.repeat(ccre_slopes.reshape(-1, 1), ge_count).reshape(ccre_count, -1).transpose()
     gene_trend_upright_submatrix = np.repeat(gene_exp_slopes.reshape(1, -1), ccre_count).reshape(ge_count, -1)
@@ -205,7 +211,8 @@ def get_kendall_matrix(X, ge_count, ccre_count):
     ccre_trend_downleft_submatrix = np.repeat(ccre_slopes.reshape(1, -1), ge_count).reshape(ccre_count, -1)
     kendall_matrix[ge_count:, :ge_count] = torch.Tensor(gene_trend_downleft_submatrix + ccre_trend_downleft_submatrix)
     kendall_matrix.abs_()
-    kendall_matrix /= kendall_matrix.max()
+    #row-wise scaling
+    kendall_matrix /= (kendall_matrix.max(dim=1)[0] + 1e-10).reshape(-1,1)
 
     print('kendall matrix computed...')
 
@@ -286,6 +293,15 @@ def get_genomic_distance_matrix(link_ds, add_self_loops_genomic):
         dense_A[gene_idx, ccre_idx] = row.Distance / 1e6
         dense_A[ccre_idx, gene_idx] = row.Distance / 1e6
 
+
+    # we give the genomic distances an aggressive decay to augment
+    # the force of the closeness property
+    # https://www.desmos.com/calculator/73v4hi8vim?lang=it
+    softexp = math.e**(10 * (dense_A - 0.75))
+    dense_A = softexp / (1+ softexp)
+
+    #row_wise scaling:
+    dense_A /= np.max(dense_A,axis=1)
     return dense_A
 
 
@@ -358,8 +374,10 @@ def get_primitive_gene_clusters(reports_path,link_ds):
     return np.array(prim_gene_ds.primitive_cluster.to_list())
 
 
-def data_preprocessing(datapath, reports_path, genes_to_pick, device, add_self_loops_genomic=False):
+def data_preprocessing(datapath, reports_path, genes_to_pick, device,
+                       wk_atac=0, wk_acet=1, wk_meth=0, add_self_loops_genomic=False):
     ## Data preprocessing:
+
 
     link_ds, ccre_ds = load_data(datapath, genes_to_pick)
 
@@ -373,7 +391,7 @@ def data_preprocessing(datapath, reports_path, genes_to_pick, device, add_self_l
     print('Analyzing ', ge_count, ' genes and ', ccre_count, ' ccres for a total of ', ge_count + ccre_count,
           ' elements.')
     print('cCREs over Gene ratio is ', ccre_count / ge_count)
-    kendall_matrix = get_kendall_matrix(X, ge_count, ccre_count)
+    kendall_matrix = get_kendall_matrix(X, ge_count, ccre_count, wk_atac=wk_atac, wk_acet=wk_acet, wk_meth=wk_meth)
 
     D_G, D_ATAC, D_ACET, D_MET = get_distance_matrices(X, ge_count, ccre_count)
 
@@ -939,7 +957,7 @@ class AdaGAE():
     def get_dinamic_param(self, init_value, final_value, T):
         return init_value + ((final_value - init_value) * (1 / (1 + math.e ** (-1 * (self.iteration - (T/ 2)) / (T/10)))))
 
-
+    '''
     def CAN_precomputed_dist(self, distances):
 
         element_count = distances.shape[0]
@@ -981,8 +999,41 @@ class AdaGAE():
         weights = weights_diff.relu()
 
         return weights
+        '''
 
 
+
+    def CAN_precomputed_dist(self, distances):
+
+        element_count = distances.shape[0]
+
+        # symmetrize:
+        distances = torch.max(distances, torch.t(distances))
+
+        sorted_distances, _ = distances.sort(dim=1)
+        top_k = sorted_distances[:, self.current_sparsity]
+        top_k = torch.t(top_k.repeat(element_count, 1)) + 10 ** -10
+
+        sum_top_k = torch.sum(sorted_distances[:, 0:self.current_sparsity], dim=1)
+        sum_top_k = torch.t(sum_top_k.repeat(element_count, 1))
+
+        T = top_k - distances
+
+        weights = torch.div(T, self.current_sparsity * top_k - sum_top_k)
+
+        weights = weights.relu()
+
+        weights = (weights + weights.t()) / 2
+
+        if not self.add_self_loops_euclidean:
+            weights.fill_diagonal_(0)
+
+        #row-wise scaling
+        #weights /= (weights.max(dim=1)[0] + 1e-10).reshape([-1, 1])
+
+        return weights
+
+    '''
     def compute_S_D(self):
 
         # Notice that the link distance matrix has already self loop weight information
@@ -996,7 +1047,7 @@ class AdaGAE():
         S_D /= (S_D.max(dim=1)[0] + 1e-10).reshape([-1, 1])
 
         return S_D
-
+    '''
 
     def compute_P(self, prev_embedding, first_time=False):
 
@@ -1032,7 +1083,10 @@ class AdaGAE():
 
             temp_D_Z = 1 - (self.alpha_Z * (1 - self.D_Z))
 
-            temp_D_D = 1 - (self.alpha_D * (1 - self.links))
+            if self.use_kendall_matrix:
+                temp_D_D = 1 - (self.alpha_D * self.kendall_matrix * (1 - self.links))
+            else:
+                temp_D_D = 1 - (self.alpha_D * (1 - self.links))
 
             D = (temp_D_SYMM + temp_D_Z + temp_D_D) / 3
 
@@ -1212,8 +1266,8 @@ def manual_run(gae,
                final_alpha_METH=0,
                init_alpha_Z=0,
                final_alpha_Z=1,
-               init_RQ_loss_weight=0.1,
-               final_RQ_loss_weight=1,
+               init_RQ_loss_weight=0,
+               final_RQ_loss_weight=0,
                init_attractive_loss_weight=0.1,
                final_attractive_loss_weight=1,
                init_repulsive_loss_weight=1,
