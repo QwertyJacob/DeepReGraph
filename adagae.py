@@ -98,10 +98,9 @@ def get_hybrid_feature_matrix(link_ds, ccre_ds):
 
 
 def get_distance_matrices(X, ge_count, ccre_count):
+    print('Computing euclidean distance matrices')
 
     cpu_X = X.cpu()
-
-    element_count = ge_count + ccre_count
 
     gene_exp = cpu_X[:ge_count, 0:8]
     met = cpu_X[ge_count:, 8:16]
@@ -110,15 +109,22 @@ def get_distance_matrices(X, ge_count, ccre_count):
 
     ge_distances = distance(gene_exp.t(), gene_exp.t())
     ge_distances = torch.max(ge_distances, torch.t(ge_distances))
+    #ror-wise scaling
+    ge_distances /= (ge_distances.max(dim=1)[0] + 1e-10).reshape([-1, 1])
 
     met_distances = distance(met.t(), met.t())
     met_distances = torch.max(met_distances, torch.t(met_distances))
+    met_distances /= (met_distances.max(dim=1)[0] + 1e-10).reshape([-1, 1])
 
     acet_distances = distance(acet.t(), acet.t())
     acet_distances = torch.max(acet_distances, torch.t(acet_distances))
+    acet_distances /= (acet_distances.max(dim=1)[0] + 1e-10).reshape([-1, 1])
 
     atac_distances = distance(atac.t(), atac.t())
     atac_distances = torch.max(atac_distances, torch.t(atac_distances))
+    atac_distances /= (atac_distances.max(dim=1)[0] + 1e-10).reshape([-1, 1])
+
+    print('Euclidean distance matrices computed')
 
     return ge_distances, atac_distances, acet_distances, met_distances
 
@@ -612,9 +618,9 @@ class AdaGAE():
         # adj is A tilded, it is the symmetric modification of the p distribution
         # raw_adj is the p distribution before the symetrization.
         if self.pre_trained:
-            self.adj, self.raw_adj = self.compute_P(self.gae_nn.embedding.cpu())
+            self.compute_P(self.gae_nn.embedding.cpu())
         else:
-            self.adj, self.raw_adj = self.compute_P(self.X.cpu(), first_time=True)
+            self.compute_P(self.X.cpu(), first_time=True)
 
         self.norm_adj = get_normalized_adjacency_matrix(self.adj)
         self.norm_adj = self.norm_adj.to_sparse()
@@ -635,14 +641,13 @@ class AdaGAE():
 
 
     def update_graph(self):
-        self.adj, self.raw_adj = self.compute_P(self.gae_nn.embedding.cpu())
+        self.compute_P(self.gae_nn.embedding.cpu())
         self.adj = self.adj.detach()
         self.raw_adj = self.raw_adj.detach()
         # threshold = 0.5
         # connections = (recons > threshold).type(torch.IntTensor).cuda()
         # weights = weights * connections
         self.norm_adj = get_normalized_adjacency_matrix(self.adj)
-        return self.adj, self.norm_adj, self.raw_adj
 
 
     def build_loss(self, recons):
@@ -995,9 +1000,6 @@ class AdaGAE():
 
 
     def compute_P(self, prev_embedding, first_time=False):
-        """
-
-        """
 
         tras_prev_embedding = prev_embedding.t()
 
@@ -1005,57 +1007,50 @@ class AdaGAE():
 
         if first_time:
             self.D_Z = torch.ones(element_count, element_count)
-        else:
+        elif self.prev_sparsity != self.current_sparsity:
             self.D_Z = distance(tras_prev_embedding, tras_prev_embedding)
             # row-wise scaling
             self.D_Z /= (self.D_Z.max(dim=1)[0] + 1e-10).reshape([-1, 1])
 
-        # now at this point, after computing the generative model of the
-        # k sparse graph being based on current embedding's divergences and similarities,
-        # we add weight to some points of the connectivity distribution being based
-        # on the explicit graph information.
-
-        alpha_CCRES = (self.alpha_ATAC + self.alpha_ACET + self.alpha_METH ) / 3
-        alpha_symm = (alpha_CCRES + self.alpha_G + self.alpha_Z) / 3
+        # After computing the distances being based on current embedding,
+        # we add weight to some edges of the graph
+        # based on the original graph information.
 
         if first_time or (self.prev_sparsity != self.current_sparsity):
-            self.S_D = self.compute_S_D()
+            #self.S_D = self.compute_S_D()
 
-            D_G = self.D_G / (self.D_G.max(dim=1)[0] + 1e-10).reshape([-1, 1])
+            alpha_CCRES = (self.alpha_ATAC + self.alpha_ACET + self.alpha_METH) / 3
+            alpha_symm = (alpha_CCRES + self.alpha_G) / 2
 
-            D_CCRES = (self.D_ATAC * self.alpha_ATAC) + (self.D_ACET * self.alpha_ACET) + (self.D_METH * self.alpha_METH)
-            D_CCRES /= (self.alpha_ATAC + self.alpha_ACET + self.alpha_METH + 1e-10)
-            D_CCRES /=(D_CCRES.max(dim=1)[0] + 1e-10).reshape([-1, 1])
+            temp_D_SYMM = torch.ones(element_count, element_count)
 
+            temp_D_SYMM[:self.ge_count, :self.ge_count] -=  self.alpha_G * (1 - self.D_G)
 
+            temp_D_ATAC = 1 - (self.alpha_ATAC * (1 - self.D_ATAC))
+            temp_D_METH = 1 - (self.alpha_METH * (1 - self.D_METH))
+            temp_D_ACET = 1 - (self.alpha_ACET * (1 - self.D_ACET))
 
-            D = torch.ones(element_count, element_count)
-            D[:self.ge_count, :self.ge_count] = (D_G * self.alpha_G)
-            D[self.ge_count:, self.ge_count:] = (D_CCRES * alpha_CCRES)
+            D_CCRES = (temp_D_ATAC + temp_D_METH + temp_D_ACET)/3
 
-            D += (self.D_Z * self.alpha_Z)
+            temp_D_SYMM[self.ge_count:, self.ge_count:] = D_CCRES
 
-            self.S_symm = self.CAN_precomputed_dist(D)
+            temp_D_Z = 1 - (self.alpha_Z * (1 - self.D_Z))
 
+            temp_D_D = 1 - (self.alpha_D * (1 - self.links))
 
-        S = (self.S_symm * alpha_symm) + \
-            (self.S_D * self.alpha_D)
+            D = (temp_D_SYMM + temp_D_Z + temp_D_D) / 3
 
+            self.adj = self.CAN_precomputed_dist(D)
 
-        # row-wise normalization (for covenverting to probability distribution)
-        S /= (S.sum(dim=1) + 1e-10).reshape([element_count, 1])
+            # UN-symmetric connectivity distribution
+            self.raw_adj = self.adj.clone()
 
-        # UN-symmetric connectivity distribution
-        raw_S = S.clone()
+            # Symmetrization of the connectivity distribution
+            self.adj = (self.adj + self.adj.t()) / 2
 
-        # Symmetrization of the connectivity distribution
-        S = (S + S.t()) / 2
+            self.raw_adj = self.raw_adj.float().to(self.device)
+            self.adj = self.adj.float().to(self.device)
 
-
-        raw_S = raw_S.to(self.device)
-        S = S.to(self.device)
-
-        return S, raw_S
 
 
     def clustering(self):

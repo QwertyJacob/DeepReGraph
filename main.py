@@ -35,7 +35,7 @@ learning_rate = 5 * 10 ** -3
 if __name__ == '__main__':
 
 
-    modelname = '/new_champion'
+    modelname = '/new_champion_7'
     tensorboard = SummaryWriter(LOG_DIR + modelname)
 
     X, ge_count, ccre_count, distance_matrices, links, kendall_matrix, ge_class_labels = data_preprocessing(datapath, reports_path, genes_to_pick, device)
