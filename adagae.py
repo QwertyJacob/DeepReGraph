@@ -199,9 +199,8 @@ def get_kendall_matrix(X, ge_count, ccre_count, wk_atac=0, wk_acet=1, wk_meth=0)
     dim = ge_count + ccre_count
     kendall_matrix = torch.zeros(dim, dim)
 
-    w_mean_denominator = wk_atac + wk_acet + wk_meth
 
-    ccre_slopes = ((wk_atac * atac_slopes) + (wk_acet * acet_slopes) - (wk_meth * met_slopes)) / w_mean_denominator
+    ccre_slopes = ((wk_atac * atac_slopes) + (wk_acet * acet_slopes) - (wk_meth * met_slopes))
 
     ccre_trend_upright_submatrix = np.repeat(ccre_slopes.reshape(-1, 1), ge_count).reshape(ccre_count, -1).transpose()
     gene_trend_upright_submatrix = np.repeat(gene_exp_slopes.reshape(1, -1), ccre_count).reshape(ge_count, -1)
