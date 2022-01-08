@@ -656,7 +656,6 @@ class AdaGAE():
         # weights = weights * connections
         self.norm_adj = get_normalized_adjacency_matrix(self.adj)
 
-
     def build_loss(self, recons):
 
         self.adj = self.adj.to(self.device)

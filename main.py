@@ -46,16 +46,9 @@ if __name__ == '__main__':
         data_preprocessing(datapath, reports_path, genes_to_pick,
                            wk_atac=wk_atac, wk_acet=wk_acet, wk_meth=wk_meth, device=device)
 
-    gae = AdaGAE(X,
-                 ge_count,
-                 ccre_count,
-                 distance_matrices,
-                 links,
-                 kendall_matrix,
-                 ge_class_labels,
-                 tensorboard,
-                 device=device,
-                 datapath = datapath)
+    gae = AdaGAE(X,ge_count,ccre_count,distance_matrices,
+                 links,kendall_matrix,ge_class_labels,
+                 tensorboard,device=device,datapath = datapath)
 
     manual_run(gae,
                max_epoch=10,
