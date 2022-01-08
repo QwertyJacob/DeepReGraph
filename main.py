@@ -35,12 +35,12 @@ learning_rate = 5 * 10 ** -3
 if __name__ == '__main__':
 
 
-    modelname = '/new_champion_8'
+    modelname = '/1'
     tensorboard = SummaryWriter(LOG_DIR + modelname)
 
-    wk_atac = 0
-    wk_acet = 1
-    wk_meth = 0
+    wk_atac = 0.05
+    wk_acet = 0.05
+    wk_meth = 0.05
 
     X, ge_count, ccre_count, distance_matrices, links, kendall_matrix, ge_class_labels = \
         data_preprocessing(datapath, reports_path, genes_to_pick,
@@ -62,8 +62,8 @@ if __name__ == '__main__':
                init_sparsity=100,
                sparsity_increment=30,
                init_alpha_D=1,
-               final_alpha_D=0.7,
-               init_alpha_G=0.04,
+               final_alpha_D=1,
+               init_alpha_G=0.1,
                final_alpha_G=0,
                init_alpha_ATAC=0.03,
                final_alpha_ATAC=0,
@@ -74,9 +74,9 @@ if __name__ == '__main__':
                init_alpha_Z=0.5,
                final_alpha_Z=1,
                init_attractive_loss_weight=0.1,
-               final_attractive_loss_weight=3,
+               final_attractive_loss_weight=5,
                init_repulsive_loss_weight=1,
-               final_repulsive_loss_weight=0.1,
+               final_repulsive_loss_weight=0,
                max_iter=30)
 
     tensorboard.close()

@@ -109,27 +109,27 @@ def get_distance_matrices(X, ge_count, ccre_count):
 
     ge_distances = distance(gene_exp.t(), gene_exp.t())
     ge_distances = torch.max(ge_distances, torch.t(ge_distances))
-    #ror-wise scaling
-    ge_distances /= (ge_distances.max(dim=1)[0] + 1e-10).reshape([-1, 1])
+    #abs scaling
+    ge_distances /= ge_distances.max()
 
     met_distances = distance(met.t(), met.t())
     met_distances = torch.max(met_distances, torch.t(met_distances))
-    met_distances /= (met_distances.max(dim=1)[0] + 1e-10).reshape([-1, 1])
+    met_distances /= met_distances.max()
 
     acet_distances = distance(acet.t(), acet.t())
     acet_distances = torch.max(acet_distances, torch.t(acet_distances))
-    acet_distances /= (acet_distances.max(dim=1)[0] + 1e-10).reshape([-1, 1])
+    acet_distances /= acet_distances.max()
 
     atac_distances = distance(atac.t(), atac.t())
     atac_distances = torch.max(atac_distances, torch.t(atac_distances))
-    atac_distances /= (atac_distances.max(dim=1)[0] + 1e-10).reshape([-1, 1])
+    atac_distances /= atac_distances.max()
 
     print('Euclidean distance matrices computed')
 
     return ge_distances, atac_distances, acet_distances, met_distances
 
 
-def get_kendall_matrix(X, ge_count, ccre_count, wk_atac=0, wk_acet=1, wk_meth=0):
+def get_kendall_matrix(X, ge_count, ccre_count, wk_atac=0.05, wk_acet=0.05, wk_meth=0.05):
 
     numpy_X = X.cpu().numpy()
 
@@ -182,6 +182,7 @@ def get_kendall_matrix(X, ge_count, ccre_count, wk_atac=0, wk_acet=1, wk_meth=0)
         # plt.show()
 
     gene_exp_slopes = np.array(gene_exp_slopes)
+    gene_exp_slopes = np.sign(gene_exp_slopes)
     # gene_exp_slopes = (gene_exp_slopes - gene_exp_slopes.min()) / (gene_exp_slopes.max()- gene_exp_slopes.min())
 
     atac_slopes = np.array(atac_slopes)
@@ -281,7 +282,8 @@ def get_genomic_distance_matrix(link_ds, add_self_loops_genomic):
     entities_df['entity_index'] = range(0, entity_number)
     entities_df.set_index('EntityID', inplace=True)
 
-    dense_A = np.ones((entity_number, entity_number))
+    dense_A = np.zeros((entity_number, entity_number))
+    dense_A.fill(np.inf)
     if add_self_loops_genomic:
         np.fill_diagonal(dense_A, 0)
     print('processing genomic distances...')
@@ -289,18 +291,9 @@ def get_genomic_distance_matrix(link_ds, add_self_loops_genomic):
     for index, row in link_ds.reset_index().iterrows():
         gene_idx = entities_df.loc[row.EnsembleID][0]
         ccre_idx = entities_df.loc[row.cCRE_ID][0]
-        dense_A[gene_idx, ccre_idx] = row.Distance / 1e6
-        dense_A[ccre_idx, gene_idx] = row.Distance / 1e6
+        dense_A[gene_idx, ccre_idx] = row.Distance
+        dense_A[ccre_idx, gene_idx] = row.Distance
 
-
-    # we give the genomic distances an aggressive decay to augment
-    # the force of the closeness property
-    # https://www.desmos.com/calculator/73v4hi8vim?lang=it
-    softexp = math.e**(10 * (dense_A - 0.75))
-    dense_A = softexp / (1+ softexp)
-
-    #row_wise scaling:
-    dense_A /= np.max(dense_A,axis=1)
     return dense_A
 
 
@@ -374,9 +367,8 @@ def get_primitive_gene_clusters(reports_path,link_ds):
 
 
 def data_preprocessing(datapath, reports_path, genes_to_pick, device,
-                       wk_atac=0, wk_acet=1, wk_meth=0, add_self_loops_genomic=False):
+                       wk_atac=0.05, wk_acet=0.05, wk_meth=0.05, add_self_loops_genomic=False):
     ## Data preprocessing:
-
 
     link_ds, ccre_ds = load_data(datapath, genes_to_pick)
 
@@ -532,8 +524,7 @@ class AdaGAE():
                  clusterize=True,
                  learning_rate = 5 * 10 ** -3,
                  datapath="/content/DIAGdrive/MyDrive/GE_Datasets/",
-                 add_self_loops_euclidean=False,
-                 use_kendall_matrix=True,
+                 add_self_loops_euclidean=True,
                  init_alpha_Z=1,
                  init_alpha_G=1,
                  init_alpha_ATAC=1,
@@ -582,7 +573,6 @@ class AdaGAE():
         self.learning_rate = learning_rate
         self.datapath = datapath
         self.add_self_loops_euclidean = add_self_loops_euclidean
-        self.use_kendall_matrix = use_kendall_matrix
 
         self.reset()
 
@@ -619,6 +609,7 @@ class AdaGAE():
         self.current_rq_loss_weight = self.init_RQ_loss_weight
         self.current_rep_agg_loss_weight = self.init_agg_repulsive
         self.current_cluster_number = math.ceil((self.ge_count + self.ccre_count) / self.current_sparsity)
+        self.S_D = self.compute_S_D()
         self.init_adj_matrices()
         self.current_attractive_loss_weight = self.init_attractive_loss_weight
         self.current_repulsive_loss_weight = self.init_repulsive_loss_weight
@@ -744,7 +735,8 @@ class AdaGAE():
         return ge_cc_raw, ccre_cc_raw, mean_heterogeneity, ge_clust_completeness, ccre_clust_completeness, distance_score
 
     def get_mean_distance_scores(self):
-        distance_score_matrix = 1- self.links[:self.ge_count, self.ge_count:]
+        #TODO S_D depends on sparsity?
+        distance_score_matrix = self.S_D[:self.ge_count, self.ge_count:].numpy()
         cluster_labels = np.unique(self.current_prediction)
         distance_scores = []
 
@@ -1001,7 +993,6 @@ class AdaGAE():
         '''
 
 
-
     def CAN_precomputed_dist(self, distances):
 
         element_count = distances.shape[0]
@@ -1032,21 +1023,21 @@ class AdaGAE():
 
         return weights
 
-    '''
+
     def compute_S_D(self):
 
         # Notice that the link distance matrix has already self loop weight information
         S_D = fast_genomic_distance_to_similarity(self.links, self.current_genomic_C,
                                                        self.current_genomic_slope)
-        if self.use_kendall_matrix:
-            S_D = S_D * self.kendall_matrix.detach().numpy()
-        S_D = torch.Tensor(S_D)
 
-        #row-wise scaling
-        S_D /= (S_D.max(dim=1)[0] + 1e-10).reshape([-1, 1])
+        S_D = torch.tensor(S_D) * self.kendall_matrix
+
+        #abs scaling
+        S_D /= S_D.max()
 
         return S_D
-    '''
+
+
 
     def compute_P(self, prev_embedding, first_time=False):
 
@@ -1058,15 +1049,15 @@ class AdaGAE():
             self.D_Z = torch.ones(element_count, element_count)
         elif self.prev_sparsity != self.current_sparsity:
             self.D_Z = distance(tras_prev_embedding, tras_prev_embedding)
-            # row-wise scaling
-            self.D_Z /= (self.D_Z.max(dim=1)[0] + 1e-10).reshape([-1, 1])
+            # abs scaling
+            self.D_Z /= self.D_Z.max()
 
         # After computing the distances being based on current embedding,
         # we add weight to some edges of the graph
         # based on the original graph information.
 
         if first_time or (self.prev_sparsity != self.current_sparsity):
-            #self.S_D = self.compute_S_D()
+
 
             temp_D_SYMM = torch.ones(element_count, element_count)
 
@@ -1082,14 +1073,15 @@ class AdaGAE():
 
             temp_D_Z = 1 - (self.alpha_Z * (1 - self.D_Z))
 
-            if self.use_kendall_matrix:
-                temp_D_D = 1 - (self.alpha_D * self.kendall_matrix * (1 - self.links))
-            else:
-                temp_D_D = 1 - (self.alpha_D * (1 - self.links))
 
-            D = (temp_D_SYMM + temp_D_Z + temp_D_D) / 3
+            D = (temp_D_SYMM + temp_D_Z ) / 2
 
-            self.adj = self.CAN_precomputed_dist(D)
+            temp_S =   self.CAN_precomputed_dist(D)
+
+            self.adj = temp_S + (self.S_D * self.alpha_D)
+
+            # row-wise normalization
+            self.adj /= (self.adj.sum(dim=1) + 1e-10).reshape([-1, 1])
 
             # UN-symmetric connectivity distribution
             self.raw_adj = self.adj.clone()
