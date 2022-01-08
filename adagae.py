@@ -1222,8 +1222,8 @@ def manual_run(gae,
                final_lambda_attractive=0.5,
                init_lambda_repulsive=0.5,
                final_lambda_repulsive=0.5,
-               init_agg_repulsive=1,
-               final_agg_repulsive=0.1,
+               init_agg_repulsive=0,
+               final_agg_repulsive=0,
                max_iter=15):
 
     current_sparsity = init_sparsity
