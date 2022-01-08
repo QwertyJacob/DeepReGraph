@@ -275,8 +275,7 @@ def get_genomic_distance_matrix(link_ds, add_self_loops_genomic):
     entities_df['entity_index'] = range(0, entity_number)
     entities_df.set_index('EntityID', inplace=True)
 
-    dense_A = np.zeros((entity_number, entity_number))
-    dense_A.fill(np.inf)
+    dense_A = np.ones((entity_number, entity_number))
     if add_self_loops_genomic:
         np.fill_diagonal(dense_A, 0)
     print('processing genomic distances...')
@@ -284,8 +283,8 @@ def get_genomic_distance_matrix(link_ds, add_self_loops_genomic):
     for index, row in link_ds.reset_index().iterrows():
         gene_idx = entities_df.loc[row.EnsembleID][0]
         ccre_idx = entities_df.loc[row.cCRE_ID][0]
-        dense_A[gene_idx, ccre_idx] = row.Distance
-        dense_A[ccre_idx, gene_idx] = row.Distance
+        dense_A[gene_idx, ccre_idx] = row.Distance / 1e6
+        dense_A[ccre_idx, gene_idx] = row.Distance / 1e6
 
     return dense_A
 
@@ -728,7 +727,7 @@ class AdaGAE():
         return ge_cc_raw, ccre_cc_raw, mean_heterogeneity, ge_clust_completeness, ccre_clust_completeness, distance_score
 
     def get_mean_distance_scores(self):
-        distance_score_matrix = self.S_D[:self.ge_count, self.ge_count:].numpy()
+        distance_score_matrix = 1- self.links[:self.ge_count, self.ge_count:]
         cluster_labels = np.unique(self.current_prediction)
         distance_scores = []
 
@@ -1001,7 +1000,7 @@ class AdaGAE():
 
     def compute_P(self, prev_embedding, first_time=False):
 
-        tras_prev_embedding = prev_embedding.t()
+        tras_prev_embedding = prev_embedding.t().detach()
 
         element_count = tras_prev_embedding.shape[1]
 
@@ -1018,9 +1017,6 @@ class AdaGAE():
 
         if first_time or (self.prev_sparsity != self.current_sparsity):
             #self.S_D = self.compute_S_D()
-
-            alpha_CCRES = (self.alpha_ATAC + self.alpha_ACET + self.alpha_METH) / 3
-            alpha_symm = (alpha_CCRES + self.alpha_G) / 2
 
             temp_D_SYMM = torch.ones(element_count, element_count)
 
