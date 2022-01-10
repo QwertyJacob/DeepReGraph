@@ -97,7 +97,7 @@ def get_hybrid_feature_matrix(link_ds, ccre_ds):
     return torch.Tensor(np.concatenate((ge_values_new, ccre_activity_new))).cpu(), ge_count, ccre_count
 
 
-def get_distance_matrices(X, ge_count, ccre_count):
+def get_distance_matrices(X, ge_count):
     print('Computing euclidean distance matrices')
 
     cpu_X = X.cpu()
@@ -384,14 +384,14 @@ def data_preprocessing(datapath, reports_path, genes_to_pick, device,
     print('cCREs over Gene ratio is ', ccre_count / ge_count)
     kendall_matrix = get_kendall_matrix(X, ge_count, ccre_count, wk_atac=wk_atac, wk_acet=wk_acet, wk_meth=wk_meth)
 
-    D_G, D_ATAC, D_ACET, D_MET = get_distance_matrices(X, ge_count, ccre_count)
+    D_G, D_ATAC, D_ACET, D_MET = get_distance_matrices(X, ge_count)
 
     distance_matrices = [D_G, D_ATAC, D_ACET, D_MET]
 
     X /= torch.max(X)
     X = torch.Tensor(X).to(device)
 
-    return X, ge_count, ccre_count, distance_matrices, links, kendall_matrix, ge_class_labels
+    return X, ge_count, ccre_count, distance_matrices, links, ccre_ds, kendall_matrix, ge_class_labels
 
 
 #####
@@ -502,6 +502,7 @@ class AdaGAE():
                  distance_matrices,
                  links,
                  kendall_matrix,
+                 init_sparsity,
                  ge_class_labels,
                  tensorboard,
                  device=None,
@@ -510,11 +511,10 @@ class AdaGAE():
                  pre_computed_embedding='models/combined_adagae_z12_initk150_150epochs_embedding',
                  global_step=0,
                  layers=None,
-                 init_sparsity=200,
                  gcn=False,
                  init_genomic_slope=0.4,
                  init_genomic_C=3e5,
-                 init_alpha_D=0.5,
+                 init_alpha_D=0,
                  init_RQ_loss_weight=0.1,
                  init_agg_repulsive=1,
                  init_attractive_loss_weight=0.1,
@@ -524,12 +524,12 @@ class AdaGAE():
                  clusterize=True,
                  learning_rate = 5 * 10 ** -3,
                  datapath="/content/DIAGdrive/MyDrive/GE_Datasets/",
-                 add_self_loops_euclidean=True,
-                 init_alpha_Z=1,
+                 init_alpha_Z=0,
                  init_alpha_G=1,
                  init_alpha_ATAC=1,
                  init_alpha_ACET=1,
-                 init_alpha_METH=1):
+                 init_alpha_METH=1,
+                 differential_sparsity=True):
 
         super(AdaGAE, self).__init__()
 
@@ -555,7 +555,7 @@ class AdaGAE():
         self.pre_computed_embedding = pre_computed_embedding
         self.global_step = global_step
         self.global_ccres_over_genes_ratio = (self.ccre_count / self.ge_count)
-
+        self.differential_sparsity = differential_sparsity
         self.layers = [X.shape[0], 12, 2]
         self.init_sparsity = init_sparsity
         self.gcn = gcn
@@ -572,7 +572,6 @@ class AdaGAE():
         self.clusterize = clusterize
         self.learning_rate = learning_rate
         self.datapath = datapath
-        self.add_self_loops_euclidean = add_self_loops_euclidean
 
         self.reset()
 
@@ -609,7 +608,7 @@ class AdaGAE():
         self.current_rq_loss_weight = self.init_RQ_loss_weight
         self.current_rep_agg_loss_weight = self.init_agg_repulsive
         self.current_cluster_number = math.ceil((self.ge_count + self.ccre_count) / self.current_sparsity)
-        self.S_D = self.compute_S_D()
+        self.compute_S_D()
         self.init_adj_matrices()
         self.current_attractive_loss_weight = self.init_attractive_loss_weight
         self.current_repulsive_loss_weight = self.init_repulsive_loss_weight
@@ -672,12 +671,11 @@ class AdaGAE():
         # The following acts as an ATTRACTIVE force for the embedding learning:
         attractive_CE_term = -(self.raw_adj * torch.log(recons + 10 ** -10))
 
-        attractive_CE_term[:self.ge_count] *= self.current_lambda_attractive
-        attractive_CE_term[self.ge_count:] *= (1 - self.current_lambda_attractive)
+        # attractive_CE_term[:self.ge_count] *= self.current_lambda_attractive
+        # attractive_CE_term[self.ge_count:] *= (1 - self.current_lambda_attractive)
 
         attractive_CE_term = attractive_CE_term.sum(dim=1)
         attractive_CE_term = attractive_CE_term.mean()
-
         self.tensorboard.add_scalar(ATTRACTIVE_CE_TERM, attractive_CE_term.item(), self.global_step)
 
 
@@ -687,13 +685,11 @@ class AdaGAE():
         repulsive_CE_term = -(1 - self.raw_adj) * torch.log(1-recons)
 
 
-        repulsive_CE_term[:self.ge_count] *= self.current_lambda_repulsive
-        repulsive_CE_term[self.ge_count:] *= (1 - self.current_lambda_repulsive)
+        #repulsive_CE_term[:self.ge_count] *= self.current_lambda_repulsive
+        #repulsive_CE_term[self.ge_count:] *= (1 - self.current_lambda_repulsive)
 
         repulsive_CE_term = repulsive_CE_term.sum(dim=1)
         repulsive_CE_term = repulsive_CE_term.mean()
-
-
         self.tensorboard.add_scalar(REPULSIVE_CE_TERM, repulsive_CE_term.item(), self.global_step)
 
 
@@ -706,11 +702,10 @@ class AdaGAE():
         # Notice that torch.trace return the sum of the elements in the diagonal of the input matrix.
         rayleigh_quotient_loss = torch.trace(
             self.gae_nn.embedding.t().matmul(laplacian).matmul(self.gae_nn.embedding)) / size
-
         self.tensorboard.add_scalar(RQ_QUOTIENT_LOSS, rayleigh_quotient_loss.item(), self.global_step)
 
 
-        repulsive_aggressive_loss = torch.sum((1-self.raw_adj) * recons)
+        repulsive_aggressive_loss = torch.sum((1-self.raw_adj) * recons) / size
         self.tensorboard.add_scalar(RP_AGGRESSIVE_LOSS, repulsive_aggressive_loss.item(), self.global_step)
 
         # If we dont consider the repulsive fuzzy CE term, the following would
@@ -734,7 +729,6 @@ class AdaGAE():
         return ge_cc_raw, ccre_cc_raw, mean_heterogeneity, ge_clust_completeness, ccre_clust_completeness, distance_score
 
     def get_mean_distance_scores(self):
-        #TODO S_D depends on sparsity?
         distance_score_matrix = self.S_D[:self.ge_count, self.ge_count:].numpy()
         cluster_labels = np.unique(self.current_prediction)
         distance_scores = []
@@ -947,7 +941,6 @@ class AdaGAE():
     def get_dinamic_param(self, init_value, final_value, T):
         return init_value + ((final_value - init_value) * (1 / (1 + math.e ** (-1 * (self.iteration - (T/ 2)) / (T/10)))))
 
-    '''
     def CAN_precomputed_dist(self, distances):
 
         element_count = distances.shape[0]
@@ -957,71 +950,58 @@ class AdaGAE():
 
         sorted_distances, _ = distances.sort(dim=1)
 
-        # distance to the k-th nearest neighbor ONLY GENES:
-        top_k_genes = sorted_distances[:self.ge_count, self.current_gene_sparsity]
-        top_k_genes = torch.t(top_k_genes.repeat(element_count, 1)) + 10 ** -10
-        # summatory of the nearest k distances ONLY GENES:
-        sum_top_k_genes = torch.sum(sorted_distances[:self.ge_count, 0:self.current_gene_sparsity], dim=1)
-        sum_top_k_genes = torch.t(sum_top_k_genes.repeat(element_count, 1))
+        if self.differential_sparsity:
 
-        # numerator of equation 20 in the paper ONLY GENES
-        T_genes = top_k_genes - distances[:self.ge_count, ]
+            # distance to the k-th nearest neighbor ONLY GENES:
+            top_k_genes = sorted_distances[:self.ge_count, self.current_gene_sparsity]
+            top_k_genes = torch.t(top_k_genes.repeat(element_count, 1)) + 10 ** -10
+            # summatory of the nearest k distances ONLY GENES:
+            sum_top_k_genes = torch.sum(sorted_distances[:self.ge_count, 0:self.current_gene_sparsity], dim=1)
+            sum_top_k_genes = torch.t(sum_top_k_genes.repeat(element_count, 1))
 
-        # equation 20 in the paper. notice that self.current_sparsity = k. ONLY GENES
-        weights_genes = torch.div(T_genes, self.current_gene_sparsity * top_k_genes - sum_top_k_genes)
+            # numerator of equation 20 in the paper ONLY GENES
+            T_genes = top_k_genes - distances[:self.ge_count, ]
 
-        # distance to the k-th nearest neighbor ONLY CCRES:
-        top_k_ccres = sorted_distances[self.ge_count:, self.current_sparsity]
-        top_k_ccres = torch.t(top_k_ccres.repeat(element_count, 1)) + 10 ** -10
-
-        # summatory of the nearest k distances ONLY CCRES:
-        sum_top_k_ccres = torch.sum(sorted_distances[self.ge_count:, 0:self.current_sparsity], dim=1)
-        sum_top_k_ccres = torch.t(sum_top_k_ccres.repeat(element_count, 1))
-
-        # numerator of equation 20 in the paper ONLY CCRES
-        T_ccres = top_k_ccres - distances[self.ge_count:, ]
-
-        # equation 20 in the paper. notice that self.current_sparsity = k. ONLY CCRES
-        weights_ccres = torch.div(T_ccres, self.current_sparsity * top_k_ccres - sum_top_k_ccres)
-
-        weights_diff = torch.cat((weights_genes, weights_ccres))
-
-        weights = weights_diff.relu()
-
-        return weights
-        '''
+            # equation 20 in the paper. notice that self.current_sparsity = k. ONLY GENES
+            #weights_genes = torch.div(T_genes, self.current_gene_sparsity * top_k_genes - sum_top_k_genes)
+            weights_genes = T_genes / top_k_genes
 
 
-    def CAN_precomputed_dist(self, distances):
+            # distance to the k-th nearest neighbor ONLY CCRES:
+            top_k_ccres = sorted_distances[self.ge_count:, self.current_sparsity]
+            top_k_ccres = torch.t(top_k_ccres.repeat(element_count, 1)) + 10 ** -10
 
-        element_count = distances.shape[0]
+            # summatory of the nearest k distances ONLY CCRES:
+            sum_top_k_ccres = torch.sum(sorted_distances[self.ge_count:, 0:self.current_sparsity], dim=1)
+            sum_top_k_ccres = torch.t(sum_top_k_ccres.repeat(element_count, 1))
 
-        # symmetrize:
-        distances = torch.max(distances, torch.t(distances))
+            # numerator of equation 20 in the paper ONLY CCRES
+            T_ccres = top_k_ccres - distances[self.ge_count:, ]
 
-        sorted_distances, _ = distances.sort(dim=1)
-        top_k = sorted_distances[:, self.current_sparsity]
-        top_k = torch.t(top_k.repeat(element_count, 1)) + 10 ** -10
+            # equation 20 in the paper. notice that self.current_sparsity = k. ONLY CCRES
+            #weights_ccres = torch.div(T_ccres, self.current_sparsity * top_k_ccres - sum_top_k_ccres)
+            weights_ccres = T_ccres / top_k_ccres
 
-        sum_top_k = torch.sum(sorted_distances[:, 0:self.current_sparsity], dim=1)
-        sum_top_k = torch.t(sum_top_k.repeat(element_count, 1))
+            weights = torch.cat((weights_genes, weights_ccres))
 
-        T = top_k - distances
+        else:
 
-        weights = torch.div(T, self.current_sparsity * top_k - sum_top_k)
+            sorted_distances, _ = distances.sort(dim=1)
+            top_k = sorted_distances[:, self.current_sparsity]
+            top_k = torch.t(top_k.repeat(element_count, 1)) + 10 ** -10
+
+            sum_top_k = torch.sum(sorted_distances[:, 0:self.current_sparsity], dim=1)
+            sum_top_k = torch.t(sum_top_k.repeat(element_count, 1))
+
+            T = top_k - distances
+
+            weights = torch.div(T, self.current_sparsity * top_k - sum_top_k)
 
         weights = weights.relu()
 
         weights = (weights + weights.t()) / 2
 
-        if not self.add_self_loops_euclidean:
-            weights.fill_diagonal_(0)
-
-        #row-wise scaling
-        #weights /= (weights.max(dim=1)[0] + 1e-10).reshape([-1, 1])
-
         return weights
-
 
     def compute_S_D(self):
 
@@ -1031,11 +1011,11 @@ class AdaGAE():
 
         S_D = torch.tensor(S_D) * self.kendall_matrix
 
-        #abs scaling
-        S_D /= S_D.max()
+        # Even if it is not 100% correct, we do a row-wise scaling here because
+        # genomic bp distance scores are very weak
+        S_D /= (S_D.max(dim=1)[0] + 1e-10).reshape(-1,1)
 
-        return S_D
-
+        self.S_D = S_D
 
 
     def compute_P(self, prev_embedding, first_time=False):
@@ -1048,6 +1028,7 @@ class AdaGAE():
             self.D_Z = torch.ones(element_count, element_count)
         elif self.prev_sparsity != self.current_sparsity:
             self.D_Z = distance(tras_prev_embedding, tras_prev_embedding)
+            self.D_Z = torch.max(self.D_Z, torch.t(self.D_Z))
             # abs scaling
             self.D_Z /= self.D_Z.max()
 
@@ -1075,21 +1056,21 @@ class AdaGAE():
 
             D = (temp_D_SYMM + temp_D_Z ) / 2
 
-            temp_S =   self.CAN_precomputed_dist(D)
+            self.S_SYMM =   self.CAN_precomputed_dist(D)
 
-            self.adj = temp_S + (self.S_D * self.alpha_D)
+        self.adj = self.S_SYMM + (self.S_D * self.alpha_D)
 
-            # row-wise normalization
-            self.adj /= (self.adj.sum(dim=1) + 1e-10).reshape([-1, 1])
+        # row-wise normalization
+        self.adj /= (self.adj.sum(dim=1) + 1e-10).reshape([-1, 1])
 
-            # UN-symmetric connectivity distribution
-            self.raw_adj = self.adj.clone()
+        # UN-symmetric connectivity distribution
+        self.raw_adj = self.adj.clone()
 
-            # Symmetrization of the connectivity distribution
-            self.adj = (self.adj + self.adj.t()) / 2
+        # Symmetrization of the connectivity distribution
+        self.adj = (self.adj + self.adj.t()) / 2
 
-            self.raw_adj = self.raw_adj.float().to(self.device)
-            self.adj = self.adj.float().to(self.device)
+        self.raw_adj = self.raw_adj.float().to(self.device)
+        self.adj = self.adj.float().to(self.device)
 
 
 
