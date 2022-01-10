@@ -384,7 +384,7 @@ def data_preprocessing(datapath, reports_path, genes_to_pick, device,
     print('cCREs over Gene ratio is ', ccre_count / ge_count)
     kendall_matrix = get_kendall_matrix(X, ge_count, ccre_count, wk_atac=wk_atac, wk_acet=wk_acet, wk_meth=wk_meth)
 
-    D_G, D_ATAC, D_ACET, D_MET = get_distance_matrices(X, ge_count, ccre_count)
+    D_G, D_ATAC, D_ACET, D_MET = get_distance_matrices(X, ge_count)
 
     distance_matrices = [D_G, D_ATAC, D_ACET, D_MET]
 

@@ -56,20 +56,16 @@ if __name__ == '__main__':
                init_sparsity=init_sparsity,
                sparsity_increment=30,
                init_gbf=0,
-               final_gbf=0.5,
-               init_RQ_loss_weight=0,
-               final_RQ_loss_weight=0,
-               init_attractive_loss_weight=0.1,
-               final_attractive_loss_weight=3,
-               init_repulsive_loss_weight=1,
-               final_repulsive_loss_weight=0.1,
-               init_lambda_attractive=0.5,
-               final_lambda_attractive=0.5,
-               init_lambda_repulsive=0.5,
-               final_lambda_repulsive=0.5,
+               final_gbf=0,
+               init_RQ_loss_weight=1,
+               final_RQ_loss_weight=1,
+               init_attractive_loss_weight=1,
+               final_attractive_loss_weight=1,
+               init_repulsive_loss_weight=0,
+               final_repulsive_loss_weight=0,
                init_agg_repulsive=0,
                final_agg_repulsive=0,
-               max_iter=70
+               max_iter=20
                )
     #fixed_spars_run(gae)
 
