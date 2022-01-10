@@ -391,7 +391,7 @@ def data_preprocessing(datapath, reports_path, genes_to_pick, device,
     X /= torch.max(X)
     X = torch.Tensor(X).to(device)
 
-    return X, ge_count, ccre_count, distance_matrices, links, kendall_matrix, ge_class_labels
+    return X, ge_count, ccre_count, distance_matrices, links, ccre_ds, kendall_matrix, ge_class_labels
 
 
 #####
@@ -522,8 +522,8 @@ class AdaGAE():
                  init_alpha_ATAC=1,
                  init_alpha_ACET=1,
                  init_alpha_METH=1,
-                 differential_sparsity=False,
-                 use_distances_matrices_first_time=False):
+                 differential_sparsity=True,
+                 gene_ccre_dist_factor=1):
 
         super(AdaGAE, self).__init__()
 
@@ -547,8 +547,8 @@ class AdaGAE():
         self.pre_computed_embedding = pre_computed_embedding
         self.global_step = global_step
         self.global_ccres_over_genes_ratio = (self.ccre_count / self.ge_count)
+        self.gene_ccre_dist_factor=gene_ccre_dist_factor
         self.differential_sparsity = differential_sparsity
-        self.use_distances_matrices_first_time = use_distances_matrices_first_time
         input_dim = X.shape[1]
         if layers is None:
             self.layers = [input_dim, 12, 2]
@@ -660,12 +660,11 @@ class AdaGAE():
         # The following acts as an ATTRACTIVE force for the embedding learning:
         attractive_CE_term = -(self.raw_adj * torch.log(recons + 10 ** -10))
 
-        attractive_CE_term[:self.ge_count] *= self.current_lambda_attractive
-        attractive_CE_term[self.ge_count:] *= (1 - self.current_lambda_attractive)
+        # attractive_CE_term[:self.ge_count] *= self.current_lambda_attractive
+        # attractive_CE_term[self.ge_count:] *= (1 - self.current_lambda_attractive)
 
         attractive_CE_term = attractive_CE_term.sum(dim=1)
         attractive_CE_term = attractive_CE_term.mean()
-
         self.tensorboard.add_scalar(ATTRACTIVE_CE_TERM, attractive_CE_term.item(), self.global_step)
 
 
@@ -675,13 +674,11 @@ class AdaGAE():
         repulsive_CE_term = -(1 - self.raw_adj) * torch.log(1-recons)
 
 
-        repulsive_CE_term[:self.ge_count] *= self.current_lambda_repulsive
-        repulsive_CE_term[self.ge_count:] *= (1 - self.current_lambda_repulsive)
+        #repulsive_CE_term[:self.ge_count] *= self.current_lambda_repulsive
+        #repulsive_CE_term[self.ge_count:] *= (1 - self.current_lambda_repulsive)
 
         repulsive_CE_term = repulsive_CE_term.sum(dim=1)
         repulsive_CE_term = repulsive_CE_term.mean()
-
-
         self.tensorboard.add_scalar(REPULSIVE_CE_TERM, repulsive_CE_term.item(), self.global_step)
 
 
@@ -694,7 +691,6 @@ class AdaGAE():
         # Notice that torch.trace return the sum of the elements in the diagonal of the input matrix.
         rayleigh_quotient_loss = torch.trace(
             self.gae_nn.embedding.t().matmul(laplacian).matmul(self.gae_nn.embedding)) / size
-
         self.tensorboard.add_scalar(RQ_QUOTIENT_LOSS, rayleigh_quotient_loss.item(), self.global_step)
 
 
@@ -941,7 +937,9 @@ class AdaGAE():
             T_genes = top_k_genes - distances[:self.ge_count, ]
 
             # equation 20 in the paper. notice that self.current_sparsity = k. ONLY GENES
-            weights_genes = torch.div(T_genes, self.current_gene_sparsity * top_k_genes - sum_top_k_genes)
+            #weights_genes = torch.div(T_genes, self.current_gene_sparsity * top_k_genes - sum_top_k_genes)
+            weights_genes = T_genes / top_k_genes
+
 
             # distance to the k-th nearest neighbor ONLY CCRES:
             top_k_ccres = sorted_distances[self.ge_count:, self.current_sparsity]
@@ -955,7 +953,8 @@ class AdaGAE():
             T_ccres = top_k_ccres - distances[self.ge_count:, ]
 
             # equation 20 in the paper. notice that self.current_sparsity = k. ONLY CCRES
-            weights_ccres = torch.div(T_ccres, self.current_sparsity * top_k_ccres - sum_top_k_ccres)
+            #weights_ccres = torch.div(T_ccres, self.current_sparsity * top_k_ccres - sum_top_k_ccres)
+            weights_ccres = T_ccres / top_k_ccres
 
             weights = torch.cat((weights_genes, weights_ccres))
 
@@ -999,21 +998,17 @@ class AdaGAE():
 
         element_count = tras_prev_embedding.shape[1]
 
-        if first_time and self.use_distances_matrices_first_time:
-                self.D_Z = torch.full((element_count, element_count),10)
-                self.D_Z[:self.ge_count,:self.ge_count] = self.D_G
-                denominator = (self.init_alpha_ACET + self.init_alpha_METH + self.init_alpha_ATAC)
-                D_CCRES = ((self.init_alpha_METH *  self.D_METH) +
-                           (self.init_alpha_ACET * self.D_ACET) +
-                           (self.init_alpha_ATAC * self.D_ATAC)) / denominator
-                self.D_Z[self.ge_count:,self.ge_count:] = D_CCRES
-                self.S_Z = self.CAN_precomputed_dist(self.D_Z)
+        if first_time:
+            self.D_Z = torch.full((element_count, element_count),self.gene_ccre_dist_factor)
+            self.D_Z[:self.ge_count,:self.ge_count] = self.D_G
+            denominator = (self.init_alpha_ACET + self.init_alpha_METH + self.init_alpha_ATAC)
+            D_CCRES = ((self.init_alpha_METH *  self.D_METH) +
+                       (self.init_alpha_ACET * self.D_ACET) +
+                       (self.init_alpha_ATAC * self.D_ATAC)) / denominator
+            self.D_Z[self.ge_count:,self.ge_count:] = D_CCRES
+            self.S_Z = self.CAN_precomputed_dist(self.D_Z)
 
-        elif first_time or self.prev_sparsity != self.current_sparsity:
-            if not first_time:
-                print('Computing new Distances from Z')
-                print('self.prev_sparsity', self.prev_sparsity)
-                print('self.current_sparsity', self.current_sparsity)
+        elif self.prev_sparsity != self.current_sparsity:
             self.D_Z = distance(tras_prev_embedding, tras_prev_embedding)
             self.D_Z = torch.max(self.D_Z, torch.t(self.D_Z))
             # abs scaling

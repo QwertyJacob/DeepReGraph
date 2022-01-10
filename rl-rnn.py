@@ -219,7 +219,7 @@ learning_rate = 5 * 10 ** -3
 ################
 
 
-X, ge_count, ccre_count, links, kendall_matrix, ge_class_labels = data_preprocessing(datapath, reports_path, genes_to_pick, device)
+X, ge_count, ccre_count, links, ccre_ds, kendall_matrix, ge_class_labels = data_preprocessing(datapath, reports_path, genes_to_pick, device)
 
 
 ################

@@ -15,8 +15,7 @@ LOG_DIR = 'local_runs/'
 from adagae import *
 import torch
 from torch.utils.tensorboard import SummaryWriter
-import matplotlib.pyplot as plt
-
+from data_reporting import *
 
 
 ###########
@@ -35,35 +34,36 @@ learning_rate = 5 * 10 ** -3
 if __name__ == '__main__':
 
 
-    modelname = '/2'
+    modelname = '/new_run_7'
     tensorboard = SummaryWriter(LOG_DIR + modelname)
 
     wk_atac = 0.05
     wk_acet = 0.05
     wk_meth = 0.05
-    init_sparsity = 10
+    init_sparsity = 200
 
-    X, ge_count, ccre_count, distance_matrices, links, kendall_matrix, ge_class_labels = \
+    X, ge_count, ccre_count, distance_matrices, links, ccre_ds, kendall_matrix, ge_class_labels = \
         data_preprocessing(datapath, reports_path, genes_to_pick,
                            wk_atac=wk_atac, wk_acet=wk_acet, wk_meth=wk_meth, device=device)
 
     gae = AdaGAE(X,ge_count,ccre_count,distance_matrices,
                  links,kendall_matrix,init_sparsity,ge_class_labels,
-                 tensorboard,device=device,datapath = datapath)
+                 tensorboard,device=device,datapath = datapath,
+                 init_gbf=0)
 
     manual_run(gae,
-               max_epoch=10,
+               max_epoch=20,
                init_sparsity=init_sparsity,
-               sparsity_increment=30,
-               init_gbf=0,
-               final_gbf=0,
-               init_RQ_loss_weight=1,
+               sparsity_increment=10,
+               init_gbf=0.5,
+               final_gbf=0.5,
+               init_RQ_loss_weight=0,
                final_RQ_loss_weight=1,
                init_attractive_loss_weight=1,
-               final_attractive_loss_weight=1,
-               init_repulsive_loss_weight=0,
+               final_attractive_loss_weight=0,
+               init_repulsive_loss_weight=1,
                final_repulsive_loss_weight=0,
-               init_agg_repulsive=0,
+               init_agg_repulsive=1,
                final_agg_repulsive=0,
                max_iter=20
                )
