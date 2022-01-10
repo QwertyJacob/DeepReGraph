@@ -1058,10 +1058,12 @@ class AdaGAE():
 
             self.S_SYMM =   self.CAN_precomputed_dist(D)
 
+
         self.adj = self.S_SYMM + (self.S_D * self.alpha_D)
 
-        # row-wise normalization
-        self.adj /= (self.adj.sum(dim=1) + 1e-10).reshape([-1, 1])
+
+        # row-wise scaling
+        self.adj /= (self.adj.max(dim=1)[0] + 1e-10).reshape([-1, 1])
 
         # UN-symmetric connectivity distribution
         self.raw_adj = self.adj.clone()
@@ -1253,6 +1255,7 @@ def manual_run(gae,
 
     current_sparsity = init_sparsity
     epoch=0
+    gae.iteration = 0
 
     while epoch < max_epoch:
 
