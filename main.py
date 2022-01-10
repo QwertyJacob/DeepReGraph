@@ -35,26 +35,27 @@ learning_rate = 5 * 10 ** -3
 if __name__ == '__main__':
 
 
-    modelname = '/champion'
+    modelname = '/2'
     tensorboard = SummaryWriter(LOG_DIR + modelname)
 
-    X, ge_count, ccre_count, links, kendall_matrix, ge_class_labels = data_preprocessing(datapath, reports_path, genes_to_pick, device)
+    wk_atac = 0.05
+    wk_acet = 0.05
+    wk_meth = 0.05
+    init_sparsity = 10
 
-    gae = AdaGAE(X,
-                 ge_count,
-                 ccre_count,
-                 links,
-                 kendall_matrix,
-                 ge_class_labels,
-                 tensorboard,
-                 device=device,
-                 datapath = datapath)
+    X, ge_count, ccre_count, distance_matrices, links, kendall_matrix, ge_class_labels = \
+        data_preprocessing(datapath, reports_path, genes_to_pick,
+                           wk_atac=wk_atac, wk_acet=wk_acet, wk_meth=wk_meth, device=device)
+
+    gae = AdaGAE(X,ge_count,ccre_count,distance_matrices,
+                 links,kendall_matrix,init_sparsity,ge_class_labels,
+                 tensorboard,device=device,datapath = datapath)
 
     manual_run(gae,
                max_epoch=10,
-               init_sparsity=100,
-               sparsity_increment=1,
-               init_gbf=0.5,
+               init_sparsity=init_sparsity,
+               sparsity_increment=30,
+               init_gbf=0,
                final_gbf=0.5,
                init_RQ_loss_weight=0,
                final_RQ_loss_weight=0,
