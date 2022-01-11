@@ -50,6 +50,8 @@ if __name__ == '__main__':
                  links,kendall_matrix,init_sparsity,ge_class_labels,
                  tensorboard,device=device,datapath = datapath)
 
+    # STEP 1, VERSION 1:
+
     manual_run(gae, max_epoch=10, init_sparsity=100, sparsity_increment=10,
                init_alpha_D=0, final_alpha_D=0,
                init_alpha_G=1, final_alpha_G=.1,
@@ -58,6 +60,19 @@ if __name__ == '__main__':
                init_alpha_METH=1, final_alpha_METH=.1,
                init_alpha_Z=0, final_alpha_Z=1,
                init_attractive_loss_weight=0.1, final_attractive_loss_weight=500,
+               init_repulsive_loss_weight=1000, final_repulsive_loss_weight=0,
+               max_iter=15)
+
+    # STEP 1, VERSION 2:
+
+    manual_run(gae, max_epoch=10, init_sparsity=100, sparsity_increment=10,
+               init_alpha_D=1, final_alpha_D=1,
+               init_alpha_G=0, final_alpha_G=0,
+               init_alpha_ATAC=0, final_alpha_ATAC=0,
+               init_alpha_ACET=0, final_alpha_ACET=0,
+               init_alpha_METH=0, final_alpha_METH=0,
+               init_alpha_Z=0, final_alpha_Z=1,
+               init_attractive_loss_weight=0.1, final_attractive_loss_weight=1000,
                init_repulsive_loss_weight=1000, final_repulsive_loss_weight=0,
                max_iter=15)
 

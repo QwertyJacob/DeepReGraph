@@ -529,7 +529,8 @@ class AdaGAE():
                  init_alpha_ATAC=1,
                  init_alpha_ACET=1,
                  init_alpha_METH=1,
-                 differential_sparsity=True):
+                 differential_sparsity=True,
+                 eval_flag=False):
 
         super(AdaGAE, self).__init__()
 
@@ -547,6 +548,7 @@ class AdaGAE():
         self.links = links
         self.kendall_matrix = kendall_matrix
         self.ge_class_labels = ge_class_labels
+        self.eval_flag = eval_flag
         self.device = device
         if self.device is None: self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.X = X
@@ -618,7 +620,7 @@ class AdaGAE():
 
 
     def init_adj_matrices(self):
-        if not eval:
+        if not self.eval_flag:
             self.tensorboard.add_scalar(SPARSITY_LABEL, self.current_sparsity, self.global_step)
             self.tensorboard.add_scalar(GENE_SPARSITY_LABEL, self.current_gene_sparsity, self.global_step)
         # adj is A tilded, it is the symmetric modification of the p distribution
@@ -964,7 +966,7 @@ class AdaGAE():
 
             # equation 20 in the paper. notice that self.current_sparsity = k. ONLY GENES
             #weights_genes = torch.div(T_genes, self.current_gene_sparsity * top_k_genes - sum_top_k_genes)
-            weights_genes = T_genes / top_k_genes
+            weights_genes = T_genes / (T_genes.max(dim=1)[0].reshape(-1,1) + 1e-10)
 
 
             # distance to the k-th nearest neighbor ONLY CCRES:
@@ -980,7 +982,7 @@ class AdaGAE():
 
             # equation 20 in the paper. notice that self.current_sparsity = k. ONLY CCRES
             #weights_ccres = torch.div(T_ccres, self.current_sparsity * top_k_ccres - sum_top_k_ccres)
-            weights_ccres = T_ccres / top_k_ccres
+            weights_ccres = T_ccres / (T_ccres.max(dim=1)[0].reshape(-1,1) + 1e-10)
 
             weights = torch.cat((weights_genes, weights_ccres))
 
@@ -1056,10 +1058,14 @@ class AdaGAE():
 
             D = (temp_D_SYMM + temp_D_Z ) / 2
 
-            self.S_SYMM =   self.CAN_precomputed_dist(D)
+            self.S = self.CAN_precomputed_dist(D)
 
 
-        self.adj = self.S_SYMM + (self.S_D * self.alpha_D)
+        temp_alpha_CCRES = (self.alpha_ACET+self.alpha_METH+self.alpha_ATAC) / 3
+        temp_alpha_SYMM = (temp_alpha_CCRES + self.alpha_G) / 2
+        temp_alpha_S = (temp_alpha_SYMM + self.alpha_Z) / 2
+
+        self.adj = (self.S * temp_alpha_S) + (self.S_D * self.alpha_D)
 
 
         # row-wise scaling
@@ -1112,7 +1118,7 @@ class AdaGAE():
         plt.legend()
         if title != None:
             plt.title(title)
-        if not eval:
+        if not self.eval_flag:
             self.send_image_to_tensorboard(plt, UMAP_CLUSTER_PLOT_TAG)
         plt.show()
 
@@ -1152,7 +1158,7 @@ class AdaGAE():
         plt.legend()
         if title != None:
             plt.title(title)
-        if not eval:
+        if not self.eval_flag:
             self.send_image_to_tensorboard(plt, UMAP_CLASS_PLOT_TAG)
         plt.show()
 
