@@ -904,6 +904,9 @@ class AdaGAE():
 
         # recons is the q distribution.
         recons = self.gae_nn(self.norm_adj)
+
+        assert not torch.isnan(recons.sum())
+
         loss = self.build_loss(recons)
 
         torch.cuda.empty_cache()
