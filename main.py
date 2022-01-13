@@ -29,9 +29,9 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 genes_to_pick = 100
 
 learning_rate = 5 * 10 ** -3
-wk_atac = 0.05
-wk_acet = 0.05
-wk_meth = 0.05
+wk_atac = 0.0
+wk_acet = 0.0
+wk_meth = 0.0
 init_sparsity = 100
 
 if __name__ == '__main__':
@@ -44,7 +44,7 @@ if __name__ == '__main__':
 
 
 
-    modelname = '/2'
+    modelname = '/no_kendall'
     tensorboard = SummaryWriter(LOG_DIR + modelname)
 
 
@@ -67,17 +67,17 @@ if __name__ == '__main__':
 
     gae.differential_sparsity = True
     # STEP 2:
-
-    manual_run(gae, max_epoch=10, init_sparsity=200, sparsity_increment=10,
-               init_alpha_D=0, final_alpha_D=0,
-               init_alpha_G=0, final_alpha_G=0,
-               init_alpha_ATAC=0, final_alpha_ATAC=0,
-               init_alpha_ACET=0, final_alpha_ACET=0,
-               init_alpha_METH=0, final_alpha_METH=0,
-               init_alpha_Z=1, final_alpha_Z=1,
-               init_attractive_loss_weight=0, final_attractive_loss_weight=500,
-               init_repulsive_loss_weight=0, final_repulsive_loss_weight=0,
-               max_iter=15)
+    #
+    # manual_run(gae, max_epoch=10, init_sparsity=100, sparsity_increment=20,
+    #            init_alpha_D=0, final_alpha_D=0,
+    #            init_alpha_G=0, final_alpha_G=0,
+    #            init_alpha_ATAC=0, final_alpha_ATAC=0,
+    #            init_alpha_ACET=0, final_alpha_ACET=0,
+    #            init_alpha_METH=0, final_alpha_METH=0,
+    #            init_alpha_Z=1, final_alpha_Z=1,
+    #            init_attractive_loss_weight=0, final_attractive_loss_weight=100,
+    #            init_repulsive_loss_weight=0, final_repulsive_loss_weight=0,
+    #            max_iter=15)
 
     tensorboard.close()
     #fixed_spars_run(gae)

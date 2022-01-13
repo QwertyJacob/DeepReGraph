@@ -255,7 +255,7 @@ def get_normalized_adjacency_matrix(weights):
     # W = torch.eye(weights.shape[0]).cuda() + weights
     # degree = torch.sum(W, dim=1).pow(-0.5)
     # return (W * degree).t()*degree
-    degree = torch.sum(weights, dim=1).pow(-0.5)
+    degree = (torch.sum(weights, dim=1)+1e-10).pow(-0.5)
     return (weights * degree).t() * degree
 
 
