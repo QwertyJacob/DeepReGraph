@@ -367,10 +367,10 @@ def get_primitive_gene_clusters(reports_path,link_ds):
 
 
 def data_preprocessing(datapath, reports_path, genes_to_pick, device,
-                       wk_atac=0.05, wk_acet=0.05, wk_meth=0.05, add_self_loops_genomic=False):
+                       wk_atac=0.05, wk_acet=0.05, wk_meth=0.05, add_self_loops_genomic=False, chr_to_filter=None):
     ## Data preprocessing:
 
-    link_ds, ccre_ds = load_data(datapath, genes_to_pick)
+    link_ds, ccre_ds = load_data(datapath, genes_to_pick, chr_to_filter=chr_to_filter)
 
     X, ge_count, ccre_count = get_hybrid_feature_matrix(link_ds, ccre_ds)
 
