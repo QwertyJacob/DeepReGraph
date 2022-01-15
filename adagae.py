@@ -1141,7 +1141,7 @@ class AdaGAE():
 
         class_labels = np.array(self.ge_class_labels + self.ccre_class_labels)
         classes = np.unique(class_labels)
-        cmap = cm.get_cmap('viridis', len(classes) + 1)
+        cmap = cm.get_cmap('Set1', len(classes) + 1)
         ccre_clases = np.unique(self.ccre_class_labels)
         classplot_alphas = [0.5, 1]
         classplot_sizes = [10, 40]

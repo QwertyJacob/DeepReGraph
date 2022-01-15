@@ -90,19 +90,62 @@ if __name__ == '__main__':
 
 
     # mode 2
-    gae.differential_sparsity = True
-    manual_run(gae, max_epoch=10, init_sparsity=100, sparsity_increment=20,
-               init_alpha_D=0, final_alpha_D=0,
-               init_alpha_G=1, final_alpha_G=0,
-               init_alpha_ATAC=1, final_alpha_ATAC=0,
-               init_alpha_ACET=1, final_alpha_ACET=0,
-               init_alpha_METH=1, final_alpha_METH=0,
-               init_alpha_Z=0, final_alpha_Z=1,
-               init_attractive_loss_weight=0, final_attractive_loss_weight=100,
-               init_repulsive_loss_weight=100, final_repulsive_loss_weight=0,
-               max_iter=15)
+    # gae.differential_sparsity = True
+    # manual_run(gae, max_epoch=10, init_sparsity=100, sparsity_increment=20,
+    #            init_alpha_D=0, final_alpha_D=0,
+    #            init_alpha_G=1, final_alpha_G=0,
+    #            init_alpha_ATAC=0.5, final_alpha_ATAC=0,
+    #            init_alpha_ACET=0.5, final_alpha_ACET=0,
+    #            init_alpha_METH=0.5, final_alpha_METH=0,
+    #            init_alpha_Z=0, final_alpha_Z=1,
+    #            init_attractive_loss_weight=0, final_attractive_loss_weight=100,
+    #            init_repulsive_loss_weight=100, final_repulsive_loss_weight=0,
+    #            max_iter=15)
+    #
+
+    alpha_SYMMs = [0.5, 0]
+    alpha_Ds = [0, 1]
+    alpha_value_index = 0
+    alphaD = alpha_Ds[alpha_value_index]
+    alphaG = alpha_SYMMs[alpha_value_index]
+    alphaATAC = alpha_SYMMs[alpha_value_index]
+    alphaACET = alpha_SYMMs[alpha_value_index]
+    alphaMETH = alpha_SYMMs[alpha_value_index]
+
+    def toogle_alphas():
+        global alphaD, alphaG, alphaATAC, alphaACET, alphaMETH
+        global alpha_value_index
+
+        alpha_value_index += 1
+
+        alphaD = alpha_Ds[alpha_value_index%2]
+        alphaG = alpha_SYMMs[alpha_value_index%2]
+        alphaACET = alpha_SYMMs[alpha_value_index%2]
+        alphaATAC = alpha_SYMMs[alpha_value_index%2]
+        alphaMETH = alpha_SYMMs[alpha_value_index%2]
 
 
+
+curr_spars = 200
+max_epochs = 10
+iters_per_epoch = 45
+init_alphaZ = 0.3
+final_alphaZ = 1
+init_attr = 1000
+final_attr = 1000
+init_rep = 100
+final_rep = 100
+T = max_epochs * iters_per_epoch
+for epochs in range(0,max_epochs):
+
+    toogle_alphas()
+    alphaZ = 1
+    rep = gae.get_dinamic_param(init_rep, final_rep, T)
+    attr_force = gae.get_dinamic_param(init_attr, final_attr, T)
+    gae.run_1_epoch(current_sparsity=curr_spars, alpha_D=alphaD, attractive_loss_weight=attr_force,
+                    repulsive_loss_weight=rep, alpha_G=alphaG, alpha_ATAC=alphaATAC, alpha_ACET=alphaACET,
+                    alpha_METH=alphaMETH, alpha_Z=alphaZ, max_iter=iters_per_epoch)
+    gae.plot_classes()
 
     tensorboard.close()
     #fixed_spars_run(gae)
