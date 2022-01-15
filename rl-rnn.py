@@ -9,6 +9,7 @@ Comments were added by Jesus Cevallos and refer to such a paper.
 # Personal computer
 datapath = 'C:\\Users\\Jesus\\odrive\\Diag GDrive\\GE_Datasets_2\\'
 reports_path = 'C:\\Users\\Jesus\\odrive\\Diag GDrive\\Shared with Me\\RL_developmental_studies\\Reports\\tight_var_data\\'
+primitive_ccre_ds_path = 'C:\\Users\\Jesus\\odrive\\Diag GDrive\\RL_developmental_studies\\Reports\\cCRE Clustering\\variable_k\\agglomerative_clust_cCRE_8.csv'
 LOG_DIR = 'local_runs/'
 
 
@@ -219,7 +220,8 @@ learning_rate = 5 * 10 ** -3
 ################
 
 
-X, ge_count, ccre_count, distance_matrices, links, ccre_ds, kendall_matrix, ge_class_labels = data_preprocessing(datapath, reports_path, genes_to_pick, device)
+X, ge_count, ccre_count, distance_matrices, links, ccre_ds, kendall_matrix, ge_class_labels, ccre_class_labels = \
+	data_preprocessing(datapath, reports_path, primitive_ccre_ds_path, genes_to_pick, device)
 
 
 ################
@@ -228,17 +230,9 @@ X, ge_count, ccre_count, distance_matrices, links, ccre_ds, kendall_matrix, ge_c
 modelname = '/new_run_step'
 tensorboard = SummaryWriter(LOG_DIR + modelname)
 
-adagae_obj = AdaGAE(X,
-             ge_count,
-             ccre_count,
-			 distance_matrices,
-             links,
-             kendall_matrix,
-             ge_class_labels,
-             tensorboard,
-            device=device,
-            datapath = datapath,
-            learning_rate=learning_rate)
+adagae_obj = AdaGAE(X,ge_count,ccre_count,distance_matrices,
+                 links,kendall_matrix,init_spars,ge_class_labels,ccre_class_labels,
+                 tensorboard,device=device,datapath = datapath)
 
 
 emb_pool = AdaGAEPool(pool_size)

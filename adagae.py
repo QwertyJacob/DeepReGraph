@@ -11,8 +11,6 @@ import torch
 import cProfile
 import pstats
 from functools import wraps
-import pandas as pd
-import numpy as np
 import io
 import math
 import PIL.Image
@@ -24,8 +22,8 @@ from sklearn.utils import _safe_indexing
 from sklearn import linear_model
 #import umap
 #import umap.plot
-import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+from data_reporting import *
 
 #######################
 # HELPER FUNCTIONS#####
@@ -366,7 +364,7 @@ def get_primitive_gene_clusters(reports_path,link_ds):
     return np.array(prim_gene_ds.primitive_cluster.to_list())
 
 
-def data_preprocessing(datapath, reports_path, genes_to_pick, device,
+def data_preprocessing(datapath, reports_path, primitive_ccre_ds_path, genes_to_pick, device,
                        wk_atac=0.05, wk_acet=0.05, wk_meth=0.05, add_self_loops_genomic=False, chr_to_filter=None):
     ## Data preprocessing:
 
@@ -378,6 +376,8 @@ def data_preprocessing(datapath, reports_path, genes_to_pick, device,
 
     ge_class_labels = ['genes_' + str(ge_cluster_label) for ge_cluster_label in
                        get_primitive_gene_clusters(reports_path, link_ds)]
+
+    ccre_class_labels = ['ccres_'  + str(ccre_cluster_label) for ccre_cluster_label in get_primitive_ccre_clusters(ccre_ds, primitive_ccre_ds_path)]
 
     print('Analyzing ', ge_count, ' genes and ', ccre_count, ' ccres for a total of ', ge_count + ccre_count,
           ' elements.')
@@ -391,7 +391,7 @@ def data_preprocessing(datapath, reports_path, genes_to_pick, device,
     X /= torch.max(X)
     X = torch.Tensor(X).to(device)
 
-    return X, ge_count, ccre_count, distance_matrices, links, ccre_ds, kendall_matrix, ge_class_labels
+    return X, ge_count, ccre_count, distance_matrices, links, ccre_ds, kendall_matrix, ge_class_labels, ccre_class_labels
 
 
 #####
@@ -504,6 +504,7 @@ class AdaGAE():
                  kendall_matrix,
                  init_sparsity,
                  ge_class_labels,
+                 ccre_class_labels,
                  tensorboard,
                  device=None,
                  pre_trained=False,
@@ -548,6 +549,7 @@ class AdaGAE():
         self.links = links
         self.kendall_matrix = kendall_matrix
         self.ge_class_labels = ge_class_labels
+        self.ccre_class_labels = ccre_class_labels
         self.eval_flag = eval_flag
         self.device = device
         if self.device is None: self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -1137,24 +1139,29 @@ class AdaGAE():
         else:
             bi_dim_embedding = self.gae_nn.embedding.detach().cpu()
 
-        class_labels = np.array(self.ge_class_labels + ['ccres'] * self.ccre_count)
+        class_labels = np.array(self.ge_class_labels + self.ccre_class_labels)
         classes = np.unique(class_labels)
+        cmap = cm.get_cmap('viridis', len(classes) + 1)
+        ccre_clases = np.unique(self.ccre_class_labels)
+        classplot_alphas = [0.5, 1]
+        classplot_sizes = [10, 40]
 
-        classplot_alphas = [0.3, 1, 1, 1, 1]
-        classplot_markers = ["o", "^", "v", "v", "^"]
-        classplot_colors = ['aquamarine', 'r', 'g', 'g', 'r']
-        classplot_sizes = [10, 40, 40, 40, 40]
         for idx, elem_class in enumerate(classes):
+
             cluster_points = _safe_indexing(bi_dim_embedding, class_labels == elem_class)
-            cluster_marker = classplot_markers[idx]
-            cluster_color = classplot_colors[idx]
-            cluster_marker_size = classplot_sizes[idx]
+
+            if idx < len(ccre_clases):
+                cluster_marker_size = classplot_sizes[0]
+                cluster_alpha = classplot_alphas[0]
+            else:
+                cluster_marker_size = classplot_sizes[1]
+                cluster_alpha = classplot_alphas[1]
+
             plt.scatter(cluster_points[:, 0],
                         cluster_points[:, 1],
-                        marker=cluster_marker,
-                        color=cluster_color,
+                        color=cmap.colors[idx],
                         label=elem_class,
-                        alpha=classplot_alphas[idx],
+                        alpha=cluster_alpha,
                         s=cluster_marker_size)
             if only_ccres:
                 break
