@@ -379,8 +379,6 @@ def build_graph(X,ge_count,ccre_count, primitive_gene_clusters, primitive_ccre_c
 
     G = nx.Graph()
 
-    gene_clusters = np.max(primitive_gene_clusters) + 1
-
     for ge_node_idx in range(0, ge_count):
 
         G.add_node(ge_node_idx, ge_exp=X[ge_node_idx][:8], primitive_cluster=primitive_gene_clusters[ge_node_idx])
@@ -388,7 +386,7 @@ def build_graph(X,ge_count,ccre_count, primitive_gene_clusters, primitive_ccre_c
     for ccre_node_idx in range(ge_count, ge_count + ccre_count):
 
         G.add_node(ccre_node_idx, meth=X[ccre_node_idx][8:16], acet=X[ccre_node_idx][16:24],
-                   atac=X[ccre_node_idx][24:32], primitive_cluster=primitive_ccre_clusters[ccre_node_idx-ge_count]+gene_clusters)
+                   atac=X[ccre_node_idx][24:32], primitive_cluster=primitive_ccre_clusters[ccre_node_idx-ge_count])
 
     return G
 
@@ -405,17 +403,20 @@ def data_preprocessing(datapath, reports_path, primitive_ccre_ds_path, genes_to_
     X, ge_count, ccre_count = get_hybrid_feature_matrix(link_ds, ccre_ds)
 
     primitive_gene_clusters = get_primitive_gene_clusters(reports_path, link_ds)
+
     primitive_ccre_clusters = get_primitive_ccre_clusters(ccre_ds, primitive_ccre_ds_path)
 
-    G = build_graph(X, ge_count,ccre_count, primitive_gene_clusters, primitive_ccre_clusters)
+    ge_class_labels = ['genes_' + str(ge_cluster_label) for ge_cluster_label in primitive_gene_clusters]
+
+    ccre_class_labels = ['ccres_'  + str(ccre_cluster_label) for ccre_cluster_label in primitive_ccre_clusters]
+
+    G = build_graph(X, ge_count,ccre_count, ge_class_labels, ccre_class_labels)
 
     kendall_matrix = get_kendall_matrix(X, ge_count, ccre_count, wk_atac=wk_atac, wk_acet=wk_acet, wk_meth=wk_meth)
 
     gen_dist_score, G = get_genomic_distance_matrix(link_ds, add_self_loops_genomic, genomic_C, genomic_slope, kendall_matrix, G )
 
-    ge_class_labels = ['genes_' + str(ge_cluster_label) for ge_cluster_label in primitive_gene_clusters]
 
-    ccre_class_labels = ['ccres_'  + str(ccre_cluster_label) for ccre_cluster_label in primitive_ccre_clusters]
 
     print('Analyzing ', ge_count, ' genes and ', ccre_count, ' ccres for a total of ', ge_count + ccre_count,
           ' elements.')
