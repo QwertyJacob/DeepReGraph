@@ -282,9 +282,8 @@ def get_genomic_distance_matrix(link_ds, add_self_loops_genomic, genomic_C, geno
     entities_df.set_index('EntityID', inplace=True)
 
     dense_A = np.zeros((entity_number, entity_number))
-    dense_A.fill(np.inf)
     if add_self_loops_genomic:
-        np.fill_diagonal(dense_A, 0)
+        np.fill_diagonal(dense_A, 1)
     print('processing genomic distances...')
 
     for index, row in link_ds.reset_index().iterrows():
@@ -535,6 +534,7 @@ class AdaGAE():
 
     def __init__(self,
                  X,
+                 G,
                  ge_count,
                  ccre_count,
                  distance_matrices,
@@ -592,6 +592,7 @@ class AdaGAE():
         self.device = device
         if self.device is None: self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.X = X
+        self.G = G
         self.pre_trained = pre_trained
         self.pre_trained_state_dict = pre_trained_state_dict
         self.pre_computed_embedding = pre_computed_embedding

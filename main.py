@@ -55,7 +55,7 @@ if __name__ == '__main__':
     tensorboard = SummaryWriter(LOG_DIR + modelname)
 
 
-    gae = AdaGAE(X, ge_count, ccre_count, distance_matrices,
+    gae = AdaGAE(X, G, ge_count, ccre_count, distance_matrices,
                  gen_dist_score, kendall_matrix, init_sparsity, ge_class_labels, ccre_class_labels,
                  tensorboard, device=device, datapath = datapath)
 

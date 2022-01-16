@@ -230,7 +230,7 @@ X, G, ge_count, ccre_count, distance_matrices, gen_dist_score, ccre_ds, kendall_
 modelname = '/new_run_step'
 tensorboard = SummaryWriter(LOG_DIR + modelname)
 
-adagae_obj = AdaGAE(X, ge_count, ccre_count, distance_matrices,
+adagae_obj = AdaGAE(X, G, ge_count, ccre_count, distance_matrices,
 					gen_dist_score, kendall_matrix, init_spars, ge_class_labels, ccre_class_labels,
 					tensorboard, device=device, datapath = datapath)
 
