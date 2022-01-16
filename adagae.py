@@ -385,7 +385,7 @@ def build_graph(X,ge_count,ccre_count, primitive_gene_clusters, primitive_ccre_c
 
         G.add_node(ge_node_idx, ge_exp=X[ge_node_idx][:8], primitive_cluster=primitive_gene_clusters[ge_node_idx])
 
-    for ccre_node_idx in range(ge_count, ge_count + ccre_count - 1):
+    for ccre_node_idx in range(ge_count, ge_count + ccre_count):
 
         G.add_node(ccre_node_idx, meth=X[ccre_node_idx][8:16], acet=X[ccre_node_idx][16:24],
                    atac=X[ccre_node_idx][24:32], primitive_cluster=primitive_ccre_clusters[ccre_node_idx-ge_count]+gene_clusters)
