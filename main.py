@@ -45,7 +45,7 @@ if __name__ == '__main__':
 
 
 
-    X, ge_count, ccre_count, distance_matrices, links, ccre_ds, kendall_matrix, ge_class_labels, ccre_class_labels= \
+    X, G, ge_count, ccre_count, distance_matrices, gen_dist_score, ccre_ds, kendall_matrix, ge_class_labels, ccre_class_labels= \
         data_preprocessing(datapath, reports_path, primitive_ccre_ds_path, genes_to_pick,
                            wk_atac=wk_atac, wk_acet=wk_acet, wk_meth=wk_meth, device=device, chr_to_filter=[15,16,17,18])
 
@@ -55,9 +55,9 @@ if __name__ == '__main__':
     tensorboard = SummaryWriter(LOG_DIR + modelname)
 
 
-    gae = AdaGAE(X,ge_count,ccre_count,distance_matrices,
-                 links,kendall_matrix,init_sparsity,ge_class_labels,ccre_class_labels,
-                 tensorboard,device=device,datapath = datapath)
+    gae = AdaGAE(X, ge_count, ccre_count, distance_matrices,
+                 gen_dist_score, kendall_matrix, init_sparsity, ge_class_labels, ccre_class_labels,
+                 tensorboard, device=device, datapath = datapath)
 
 
     # mode 1:
@@ -103,50 +103,50 @@ if __name__ == '__main__':
     #            max_iter=15)
     #
 
-    alpha_SYMMs = [0.5, 0]
-    alpha_Ds = [0, 1]
-    alpha_value_index = 0
-    alphaD = alpha_Ds[alpha_value_index]
-    alphaG = alpha_SYMMs[alpha_value_index]
-    alphaATAC = alpha_SYMMs[alpha_value_index]
-    alphaACET = alpha_SYMMs[alpha_value_index]
-    alphaMETH = alpha_SYMMs[alpha_value_index]
-
-    def toogle_alphas():
-        global alphaD, alphaG, alphaATAC, alphaACET, alphaMETH
-        global alpha_value_index
-
-        alpha_value_index += 1
-
-        alphaD = alpha_Ds[alpha_value_index%2]
-        alphaG = alpha_SYMMs[alpha_value_index%2]
-        alphaACET = alpha_SYMMs[alpha_value_index%2]
-        alphaATAC = alpha_SYMMs[alpha_value_index%2]
-        alphaMETH = alpha_SYMMs[alpha_value_index%2]
-
-
-
-curr_spars = 200
-max_epochs = 10
-iters_per_epoch = 45
-init_alphaZ = 0.3
-final_alphaZ = 1
-init_attr = 1000
-final_attr = 1000
-init_rep = 100
-final_rep = 100
-T = max_epochs * iters_per_epoch
-for epochs in range(0,max_epochs):
-
-    toogle_alphas()
-    alphaZ = 1
-    rep = gae.get_dinamic_param(init_rep, final_rep, T)
-    attr_force = gae.get_dinamic_param(init_attr, final_attr, T)
-    gae.run_1_epoch(current_sparsity=curr_spars, alpha_D=alphaD, attractive_loss_weight=attr_force,
-                    repulsive_loss_weight=rep, alpha_G=alphaG, alpha_ATAC=alphaATAC, alpha_ACET=alphaACET,
-                    alpha_METH=alphaMETH, alpha_Z=alphaZ, max_iter=iters_per_epoch)
-    gae.plot_classes()
-
-    tensorboard.close()
-    #fixed_spars_run(gae)
+    # alpha_SYMMs = [0.5, 0]
+    # alpha_Ds = [0, 1]
+    # alpha_value_index = 0
+    # alphaD = alpha_Ds[alpha_value_index]
+    # alphaG = alpha_SYMMs[alpha_value_index]
+    # alphaATAC = alpha_SYMMs[alpha_value_index]
+    # alphaACET = alpha_SYMMs[alpha_value_index]
+    # alphaMETH = alpha_SYMMs[alpha_value_index]
+    #
+    # def toogle_alphas():
+    #     global alphaD, alphaG, alphaATAC, alphaACET, alphaMETH
+    #     global alpha_value_index
+    #
+    #     alpha_value_index += 1
+    #
+    #     alphaD = alpha_Ds[alpha_value_index%2]
+    #     alphaG = alpha_SYMMs[alpha_value_index%2]
+    #     alphaACET = alpha_SYMMs[alpha_value_index%2]
+    #     alphaATAC = alpha_SYMMs[alpha_value_index%2]
+    #     alphaMETH = alpha_SYMMs[alpha_value_index%2]
+    #
+    #
+    #
+    # curr_spars = 200
+    # max_epochs = 10
+    # iters_per_epoch = 45
+    # init_alphaZ = 0.3
+    # final_alphaZ = 1
+    # init_attr = 1000
+    # final_attr = 1000
+    # init_rep = 100
+    # final_rep = 100
+    # T = max_epochs * iters_per_epoch
+    # for epochs in range(0,max_epochs):
+    #
+    #     toogle_alphas()
+    #     alphaZ = 1
+    #     rep = gae.get_dinamic_param(init_rep, final_rep, T)
+    #     attr_force = gae.get_dinamic_param(init_attr, final_attr, T)
+    #     gae.run_1_epoch(current_sparsity=curr_spars, alpha_D=alphaD, attractive_loss_weight=attr_force,
+    #                     repulsive_loss_weight=rep, alpha_G=alphaG, alpha_ATAC=alphaATAC, alpha_ACET=alphaACET,
+    #                     alpha_METH=alphaMETH, alpha_Z=alphaZ, max_iter=iters_per_epoch)
+    #     gae.plot_classes()
+    #
+    #     tensorboard.close()
+    #     #fixed_spars_run(gae)
 

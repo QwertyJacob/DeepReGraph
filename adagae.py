@@ -24,6 +24,7 @@ from sklearn import linear_model
 #import umap.plot
 import matplotlib.cm as cm
 from data_reporting import *
+import networkx as nx
 
 #######################
 # HELPER FUNCTIONS#####
@@ -271,7 +272,7 @@ def fast_genomic_distance_to_similarity(link_matrix, c, d):
     return 1 / (((link_matrix / c) ** (10 * d)) + 1)
 
 
-def get_genomic_distance_matrix(link_ds, add_self_loops_genomic):
+def get_genomic_distance_matrix(link_ds, add_self_loops_genomic, genomic_C, genomic_slope, kendall_matrix, G):
     genes = link_ds.index.unique().tolist()
     ccres = link_ds.cCRE_ID.unique().tolist()
     entity_number = len(genes + ccres)
@@ -289,10 +290,20 @@ def get_genomic_distance_matrix(link_ds, add_self_loops_genomic):
     for index, row in link_ds.reset_index().iterrows():
         gene_idx = entities_df.loc[row.EnsembleID][0]
         ccre_idx = entities_df.loc[row.cCRE_ID][0]
-        dense_A[gene_idx, ccre_idx] = row.Distance
-        dense_A[ccre_idx, gene_idx] = row.Distance
 
-    return dense_A
+        #see https://www.desmos.com/calculator/bmxxh8sqra
+
+        distance_score = 1 / (((row.Distance / genomic_C) ** (10 * genomic_slope)) + 1)
+
+        dense_A[gene_idx, ccre_idx] = distance_score
+        dense_A[ccre_idx, gene_idx] = distance_score
+
+        G.add_edge(gene_idx, ccre_idx, weight=distance_score)
+
+
+    dense_A = torch.Tensor(dense_A) * kendall_matrix
+
+    return dense_A, G
 
 
 def load_data(datapath, num_of_genes=0, tight=True, chr_to_filter=None):
@@ -364,25 +375,52 @@ def get_primitive_gene_clusters(reports_path,link_ds):
     return np.array(prim_gene_ds.primitive_cluster.to_list())
 
 
+
+def build_graph(X,ge_count,ccre_count, primitive_gene_clusters, primitive_ccre_clusters):
+
+    G = nx.Graph()
+
+    gene_clusters = np.max(primitive_gene_clusters) + 1
+
+    for ge_node_idx in range(0, ge_count):
+
+        G.add_node(ge_node_idx, ge_exp=X[ge_node_idx][:8], primitive_cluster=primitive_gene_clusters[ge_node_idx])
+
+    for ccre_node_idx in range(ge_count, ge_count + ccre_count - 1):
+
+        G.add_node(ccre_node_idx, meth=X[ccre_node_idx][8:16], acet=X[ccre_node_idx][16:24],
+                   atac=X[ccre_node_idx][24:32], primitive_cluster=primitive_ccre_clusters[ccre_node_idx-ge_count]+gene_clusters)
+
+    return G
+
+
+
 def data_preprocessing(datapath, reports_path, primitive_ccre_ds_path, genes_to_pick, device,
-                       wk_atac=0.05, wk_acet=0.05, wk_meth=0.05, add_self_loops_genomic=False, chr_to_filter=None):
+                       wk_atac=0.05, wk_acet=0.05, wk_meth=0.05,
+                       genomic_C = 3e5, genomic_slope = 0.4,
+                       add_self_loops_genomic=False, chr_to_filter=None):
     ## Data preprocessing:
 
     link_ds, ccre_ds = load_data(datapath, genes_to_pick, chr_to_filter=chr_to_filter)
 
     X, ge_count, ccre_count = get_hybrid_feature_matrix(link_ds, ccre_ds)
 
-    links = get_genomic_distance_matrix(link_ds, add_self_loops_genomic)
+    primitive_gene_clusters = get_primitive_gene_clusters(reports_path, link_ds)
+    primitive_ccre_clusters = get_primitive_ccre_clusters(ccre_ds, primitive_ccre_ds_path)
 
-    ge_class_labels = ['genes_' + str(ge_cluster_label) for ge_cluster_label in
-                       get_primitive_gene_clusters(reports_path, link_ds)]
+    G = build_graph(X, ge_count,ccre_count, primitive_gene_clusters, primitive_ccre_clusters)
 
-    ccre_class_labels = ['ccres_'  + str(ccre_cluster_label) for ccre_cluster_label in get_primitive_ccre_clusters(ccre_ds, primitive_ccre_ds_path)]
+    kendall_matrix = get_kendall_matrix(X, ge_count, ccre_count, wk_atac=wk_atac, wk_acet=wk_acet, wk_meth=wk_meth)
+
+    gen_dist_score, G = get_genomic_distance_matrix(link_ds, add_self_loops_genomic, genomic_C, genomic_slope, kendall_matrix, G )
+
+    ge_class_labels = ['genes_' + str(ge_cluster_label) for ge_cluster_label in primitive_gene_clusters]
+
+    ccre_class_labels = ['ccres_'  + str(ccre_cluster_label) for ccre_cluster_label in primitive_ccre_clusters]
 
     print('Analyzing ', ge_count, ' genes and ', ccre_count, ' ccres for a total of ', ge_count + ccre_count,
           ' elements.')
     print('cCREs over Gene ratio is ', ccre_count / ge_count)
-    kendall_matrix = get_kendall_matrix(X, ge_count, ccre_count, wk_atac=wk_atac, wk_acet=wk_acet, wk_meth=wk_meth)
 
     D_G, D_ATAC, D_ACET, D_MET = get_distance_matrices(X, ge_count)
 
@@ -391,7 +429,7 @@ def data_preprocessing(datapath, reports_path, primitive_ccre_ds_path, genes_to_
     X /= torch.max(X)
     X = torch.Tensor(X).to(device)
 
-    return X, ge_count, ccre_count, distance_matrices, links, ccre_ds, kendall_matrix, ge_class_labels, ccre_class_labels
+    return X, G, ge_count, ccre_count, distance_matrices, gen_dist_score, ccre_ds, kendall_matrix, ge_class_labels, ccre_class_labels
 
 
 #####
@@ -500,7 +538,7 @@ class AdaGAE():
                  ge_count,
                  ccre_count,
                  distance_matrices,
-                 links,
+                 gen_dist_score,
                  kendall_matrix,
                  init_sparsity,
                  ge_class_labels,
@@ -546,7 +584,7 @@ class AdaGAE():
         self.init_alpha_ATAC = init_alpha_ATAC
         self.init_alpha_ACET = init_alpha_ACET
         self.init_alpha_METH = init_alpha_METH
-        self.links = links
+        self.S_D = gen_dist_score
         self.kendall_matrix = kendall_matrix
         self.ge_class_labels = ge_class_labels
         self.ccre_class_labels = ccre_class_labels
@@ -612,7 +650,6 @@ class AdaGAE():
         self.current_rq_loss_weight = self.init_RQ_loss_weight
         self.current_rep_agg_loss_weight = self.init_agg_repulsive
         self.current_cluster_number = math.ceil((self.ge_count + self.ccre_count) / self.current_sparsity)
-        self.compute_S_D()
         self.init_adj_matrices()
         self.current_attractive_loss_weight = self.init_attractive_loss_weight
         self.current_repulsive_loss_weight = self.init_repulsive_loss_weight
@@ -1010,19 +1047,7 @@ class AdaGAE():
 
         return weights
 
-    def compute_S_D(self):
 
-        # Notice that the link distance matrix has already self loop weight information
-        S_D = fast_genomic_distance_to_similarity(self.links, self.current_genomic_C,
-                                                       self.current_genomic_slope)
-
-        S_D = torch.tensor(S_D) * self.kendall_matrix
-
-        # Even if it is not 100% correct, we do a row-wise scaling here because
-        # genomic bp distance scores are very weak
-        S_D /= (S_D.max(dim=1)[0] + 1e-10).reshape(-1,1)
-
-        self.S_D = S_D
 
 
     def compute_P(self, prev_embedding, first_time=False):
