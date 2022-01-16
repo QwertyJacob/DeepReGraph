@@ -63,30 +63,30 @@ if __name__ == '__main__':
     # mode 1:
     # STEP 1:
 
-    # manual_run(gae, max_epoch=10, init_sparsity=100, sparsity_increment=10,
-    #            init_alpha_D=1, final_alpha_D=1,
-    #            init_alpha_G=0, final_alpha_G=0,
-    #            init_alpha_ATAC=0, final_alpha_ATAC=0,
-    #            init_alpha_ACET=0, final_alpha_ACET=0,
-    #            init_alpha_METH=0, final_alpha_METH=0,
-    #            init_alpha_Z=0, final_alpha_Z=0.5,
-    #            init_attractive_loss_weight=0, final_attractive_loss_weight=500,
-    #            init_repulsive_loss_weight=100, final_repulsive_loss_weight=0,
-    #            max_iter=15)
+    manual_run(gae, max_epoch=10, init_sparsity=100, sparsity_increment=10,
+               init_alpha_D=1, final_alpha_D=1,
+               init_alpha_G=0, final_alpha_G=0,
+               init_alpha_ATAC=0, final_alpha_ATAC=0,
+               init_alpha_ACET=0, final_alpha_ACET=0,
+               init_alpha_METH=0, final_alpha_METH=0,
+               init_alpha_Z=0, final_alpha_Z=0.5,
+               init_attractive_loss_weight=0, final_attractive_loss_weight=500,
+               init_repulsive_loss_weight=100, final_repulsive_loss_weight=0,
+               max_iter=15)
 
     # gae.differential_sparsity = True
     # STEP 2:
 
-    # manual_run(gae, max_epoch=10, init_sparsity=100, sparsity_increment=20,
-    #            init_alpha_D=0, final_alpha_D=0,
-    #            init_alpha_G=0, final_alpha_G=0,
-    #            init_alpha_ATAC=0, final_alpha_ATAC=0,
-    #            init_alpha_ACET=0, final_alpha_ACET=0,
-    #            init_alpha_METH=0, final_alpha_METH=0,
-    #            init_alpha_Z=1, final_alpha_Z=1,
-    #            init_attractive_loss_weight=0, final_attractive_loss_weight=100,
-    #            init_repulsive_loss_weight=0, final_repulsive_loss_weight=0,
-    #            max_iter=15)
+    manual_run(gae, max_epoch=10, init_sparsity=100, sparsity_increment=20,
+               init_alpha_D=0, final_alpha_D=0,
+               init_alpha_G=0, final_alpha_G=0,
+               init_alpha_ATAC=0, final_alpha_ATAC=0,
+               init_alpha_ACET=0, final_alpha_ACET=0,
+               init_alpha_METH=0, final_alpha_METH=0,
+               init_alpha_Z=1, final_alpha_Z=1,
+               init_attractive_loss_weight=0, final_attractive_loss_weight=100,
+               init_repulsive_loss_weight=0, final_repulsive_loss_weight=0,
+               max_iter=15)
 
 
     # mode 2

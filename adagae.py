@@ -22,9 +22,11 @@ from sklearn.utils import _safe_indexing
 from sklearn import linear_model
 #import umap
 #import umap.plot
-import matplotlib.cm as cm
 from data_reporting import *
 import networkx as nx
+import matplotlib as mpl
+from itertools import count
+
 
 #######################
 # HELPER FUNCTIONS#####
@@ -570,7 +572,8 @@ class AdaGAE():
                  init_alpha_ACET=1,
                  init_alpha_METH=1,
                  differential_sparsity=True,
-                 eval_flag=False):
+                 eval_flag=False,
+                 default_cmap=plt.cm.jet):
 
         super(AdaGAE, self).__init__()
 
@@ -621,6 +624,7 @@ class AdaGAE():
 
         classes = ['gene', 'ccre']
         self.class_label_array = np.array([classes[0]] * self.ge_count + [classes[1]] * self.ccre_count)
+        self.init_graph_plot_conf(default_cmap)
 
 
     def reset(self):
@@ -659,6 +663,48 @@ class AdaGAE():
         self.current_lambda_attractive = self.init_lambda_attractive
         if not self.pre_trained: self.init_embedding()
 
+
+    def init_graph_plot_conf(self, default_cmap=plt.cm.jet):
+        ''' This function has code taken from
+        https://stackoverflow.com/questions/14777066/matplotlib-discrete-colorbar
+        and from
+        https://stackoverflow.com/questions/28910766/python-networkx-set-node-color-automatically-based-on-number-of-attribute-opt
+        '''
+        # extract all colors from the .jet map
+        cmaplist = [default_cmap(i) for i in range(default_cmap.N)]
+        # create the new map
+        self.cmap = mpl.colors.LinearSegmentedColormap.from_list('Custom cmap', cmaplist, default_cmap.N)
+
+        primitive_clusters = set(nx.get_node_attributes(self.G, 'primitive_cluster').values())
+        mapping = dict(zip(sorted(primitive_clusters), count()))
+        self.cluster_colors = [mapping[self.G.nodes[n]['primitive_cluster']] for n in self.G.nodes()]
+        number_of_colors = np.max(np.unique(np.array(self.cluster_colors)))
+        # define the bins and normalize
+        self.cmap_bounds = np.linspace(0, number_of_colors, number_of_colors + 1)
+        self.cmap_norm = mpl.colors.BoundaryNorm(self.cmap_bounds, default_cmap.N)
+        self.graph_edges_dict = nx.get_edge_attributes(self.G, 'weight')
+
+
+    def plot_graph(self):
+        # drawing nodes and edges separately so we can capture collection for colobar
+        pos = self.gae_nn.embedding.detach().cpu().numpy()
+
+        nc = nx.draw_networkx_nodes(self.G, pos, nodelist=self.G.nodes(),
+                                    node_color=self.cluster_colors, node_size=100, cmap=self.cmap)
+
+        cb = plt.colorbar(nc, cmap=self.cmap, norm=self.cmap_norm,
+                          spacing='proportional', ticks=self.cmap_bounds, boundaries=self.cmap_bounds, format='%1i')
+
+        # edges
+        nx.draw_networkx_edges(self.G, pos,
+                               edgelist=self.graph_edges_dict.keys(),
+                               width=list(self.graph_edges_dict.values()),
+                               edge_color='lightblue',
+                               alpha=0.6)
+
+        ax = plt.gca()
+        plt.tight_layout()
+        plt.show()
 
     def init_adj_matrices(self):
         if not self.eval_flag:
@@ -1136,7 +1182,7 @@ class AdaGAE():
         else:
             bi_dim_embedding = self.gae_nn.embedding.detach().cpu()
 
-        cmap = cm.get_cmap('viridis', max(self.current_prediction) + 1)
+        cmap = mpl.cm.get_cmap('viridis', max(self.current_prediction) + 1)
         markers = ["s", "o", "$f$", "v", "^", "<", ">", "p", "$L$", "x"]
 
         for cluster in range(0, max(self.current_prediction) + 1):
@@ -1168,7 +1214,7 @@ class AdaGAE():
 
         class_labels = np.array(self.ge_class_labels + self.ccre_class_labels)
         classes = np.unique(class_labels)
-        cmap = cm.get_cmap('Set1', len(classes) + 1)
+        cmap = mpl.cm.get_cmap('Set1', len(classes) + 1)
         ccre_clases = np.unique(self.ccre_class_labels)
         classplot_alphas = [0.5, 1]
         classplot_sizes = [10, 40]
