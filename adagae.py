@@ -625,7 +625,7 @@ class AdaGAE():
 
         classes = ['gene', 'ccre']
         self.class_label_array = np.array([classes[0]] * self.ge_count + [classes[1]] * self.ccre_count)
-        self.init_graph_plot_conf(default_cmap)
+        self.init_graph_plot_conf()
 
 
     def reset(self):
@@ -665,38 +665,32 @@ class AdaGAE():
         if not self.pre_trained: self.init_embedding()
 
 
-    def init_graph_plot_conf(self, default_cmap=plt.cm.jet):
-        ''' This function has code taken from
-        https://stackoverflow.com/questions/14777066/matplotlib-discrete-colorbar
-        and from
-        https://stackoverflow.com/questions/28910766/python-networkx-set-node-color-automatically-based-on-number-of-attribute-opt
-        '''
-        # extract all colors from the .jet map
-        cmaplist = [default_cmap(i) for i in range(default_cmap.N)]
-        # create the new map
-        self.cmap = mpl.colors.LinearSegmentedColormap.from_list('Custom cmap', cmaplist, default_cmap.N)
+    def init_graph_plot_conf(self):
+        self.primitive_clusters = list(set(nx.get_node_attributes(self.G, 'primitive_cluster').values()))
+        self.primitive_clusters.sort()
+        cluster_count = len(self.primitive_clusters)
+        cluster_colors = torch.rand((cluster_count, 1, 3)).numpy()
+        self.cluster_colors = {k: v for k, v in zip(self.primitive_clusters, cluster_colors)}
+        self.cluster_nodes_dict = {}
 
-        primitive_clusters = set(nx.get_node_attributes(self.G, 'primitive_cluster').values())
-        mapping = dict(zip(sorted(primitive_clusters), count()))
-        self.cluster_colors = [mapping[self.G.nodes[n]['primitive_cluster']] for n in self.G.nodes()]
-        number_of_colors = np.max(np.unique(np.array(self.cluster_colors)))
-        # define the bins and normalize
-        self.cmap_bounds = np.linspace(0, number_of_colors, number_of_colors + 1)
-        self.cmap_norm = mpl.colors.BoundaryNorm(self.cmap_bounds, default_cmap.N)
+        for primitive_cluster in self.primitive_clusters:
+            self.cluster_nodes_dict[primitive_cluster] = [x for x, y in self.G.nodes(data=True) if
+                                                          y['primitive_cluster'] == primitive_cluster]
+
         self.graph_edges_dict = nx.get_edge_attributes(self.G, 'weight')
 
 
     def plot_graph(self):
-        # drawing nodes and edges separately so we can capture collection for colorbar
+
         pos = self.gae_nn.embedding.detach().cpu().numpy()
+        for primitive_cluster in self.cluster_nodes_dict.items():
+            curr_pos_dict = {k: v for k, v in zip(primitive_cluster[1], pos[primitive_cluster[1]])}
+            current_color = self.cluster_colors[primitive_cluster[0]]
+            nx.draw_networkx_nodes(self.G, curr_pos_dict, nodelist=primitive_cluster[1],
+                                   node_color=current_color,
+                                   node_size=100,
+                                   label=primitive_cluster[0])
 
-        nc = nx.draw_networkx_nodes(self.G, pos, nodelist=self.G.nodes(),
-                                    node_color=self.cluster_colors, node_size=100, cmap=self.cmap)
-
-        plt.colorbar(nc, cmap=self.cmap, norm=self.cmap_norm,
-                          spacing='proportional', ticks=self.cmap_bounds, boundaries=self.cmap_bounds, format='%1i')
-
-        # edges
         nx.draw_networkx_edges(self.G, pos,
                                edgelist=self.graph_edges_dict.keys(),
                                width=list(self.graph_edges_dict.values()),
@@ -704,10 +698,12 @@ class AdaGAE():
                                alpha=0.6)
 
         plt.gca()
+        plt.legend()
         if not self.eval_flag:
             self.send_image_to_tensorboard(plt, GRAPH_PLOT_TAG)
 
         plt.show()
+
 
     def init_adj_matrices(self):
         if not self.eval_flag:
