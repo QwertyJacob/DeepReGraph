@@ -463,8 +463,9 @@ HETEROGENEITY_SCORE_TAG: str = 'HeterogeneityScore'
 EMBEDDING_DIAMETER: str = 'EmbeddingDiameter'
 DISTANCE_TO_KNN_TAG: str = 'Mean Distance to knn'
 REWARD_TAG: str = 'Reward'
-UMAP_CLASS_PLOT_TAG: str = 'UMAPClassPlot'
-UMAP_CLUSTER_PLOT_TAG: str = 'UMAPClusterPlot'
+UMAP_CLASS_PLOT_TAG: str = 'ClassPlot'
+UMAP_CLUSTER_PLOT_TAG: str = 'ClusterPlot'
+GRAPH_PLOT_TAG: str = 'GraphPlot'
 CLUSTER_NUMBER_LABEL: str = 'ClusterNumber'
 GENE_CLUSTERING_COMPLETENESS_TAG: str = 'GeneClusteringCompleteness'
 CCRE_CLUSTERING_COMPLETENESS_TAG: str = 'CCREClusteringCompleteness'
@@ -686,13 +687,13 @@ class AdaGAE():
 
 
     def plot_graph(self):
-        # drawing nodes and edges separately so we can capture collection for colobar
+        # drawing nodes and edges separately so we can capture collection for colorbar
         pos = self.gae_nn.embedding.detach().cpu().numpy()
 
         nc = nx.draw_networkx_nodes(self.G, pos, nodelist=self.G.nodes(),
                                     node_color=self.cluster_colors, node_size=100, cmap=self.cmap)
 
-        cb = plt.colorbar(nc, cmap=self.cmap, norm=self.cmap_norm,
+        plt.colorbar(nc, cmap=self.cmap, norm=self.cmap_norm,
                           spacing='proportional', ticks=self.cmap_bounds, boundaries=self.cmap_bounds, format='%1i')
 
         # edges
@@ -702,8 +703,10 @@ class AdaGAE():
                                edge_color='lightblue',
                                alpha=0.6)
 
-        ax = plt.gca()
-        plt.tight_layout()
+        plt.gca()
+        if not self.eval_flag:
+            self.send_image_to_tensorboard(plt, GRAPH_PLOT_TAG)
+
         plt.show()
 
     def init_adj_matrices(self):
@@ -1416,9 +1419,9 @@ def manual_run(gae,
 
         if gae.layers[-1] > 2:
           if epoch%10==0:
-            gae.plot_classes()
+            gae.plot_graph()
         else:
-          gae.plot_classes()
+          gae.plot_graph()
 
     print('gae.current_cluster_number', gae.current_cluster_number)
 
