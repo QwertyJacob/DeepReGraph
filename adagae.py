@@ -4,9 +4,6 @@ which is an implementation of the paper "Adaptive Graph Auto-Encoder for General
 available at https://ieeexplore.ieee.org/document/9606581
 Modifications were made by Jesus Cevallos to adapt to the application problem.
 '''
-
-
-
 import torch
 import cProfile
 import pstats
@@ -25,8 +22,8 @@ from sklearn import linear_model
 from data_reporting import *
 import networkx as nx
 import matplotlib as mpl
-from itertools import count
-
+import colorsys
+import random
 
 #######################
 # HELPER FUNCTIONS#####
@@ -130,7 +127,9 @@ def get_distance_matrices(X, ge_count):
     return ge_distances, atac_distances, acet_distances, met_distances
 
 
-def get_kendall_matrix(X, ge_count, ccre_count, wk_atac=0.05, wk_acet=0.05, wk_meth=0.05):
+
+
+def get_slopes(X, ge_count):
 
     numpy_X = X.cpu().numpy()
 
@@ -139,8 +138,6 @@ def get_kendall_matrix(X, ge_count, ccre_count, wk_atac=0.05, wk_acet=0.05, wk_m
     met = numpy_X[ge_count:, 8:16]
     acet = numpy_X[ge_count:, 16:24]
     atac = numpy_X[ge_count:, 24:32]
-
-    print('computing kendall matrix...')
 
     gene_exp_slopes = []
     reg = linear_model.LinearRegression()
@@ -198,26 +195,7 @@ def get_kendall_matrix(X, ge_count, ccre_count, wk_atac=0.05, wk_acet=0.05, wk_m
     acet_slopes = np.sign(acet_slopes)
     # acet_slopes = (acet_slopes - acet_slopes.min()) / (acet_slopes.max()- acet_slopes.min())
 
-    dim = ge_count + ccre_count
-    kendall_matrix = torch.zeros(dim, dim)
-
-
-    ccre_slopes = ((wk_atac * atac_slopes) + (wk_acet * acet_slopes) - (wk_meth * met_slopes))
-
-    ccre_trend_upright_submatrix = np.repeat(ccre_slopes.reshape(-1, 1), ge_count).reshape(ccre_count, -1).transpose()
-    gene_trend_upright_submatrix = np.repeat(gene_exp_slopes.reshape(1, -1), ccre_count).reshape(ge_count, -1)
-    kendall_matrix[:ge_count, ge_count:] = torch.Tensor(gene_trend_upright_submatrix + ccre_trend_upright_submatrix)
-
-    gene_trend_downleft_submatrix = np.repeat(gene_exp_slopes.reshape(-1, 1), ccre_count).reshape(-1,ccre_count).transpose()
-    ccre_trend_downleft_submatrix = np.repeat(ccre_slopes.reshape(1, -1), ge_count).reshape(ccre_count, -1)
-    kendall_matrix[ge_count:, :ge_count] = torch.Tensor(gene_trend_downleft_submatrix + ccre_trend_downleft_submatrix)
-    kendall_matrix.abs_()
-    #row-wise scaling
-    kendall_matrix /= (kendall_matrix.max(dim=1)[0] + 1e-10).reshape(-1,1)
-
-    print('kendall matrix computed...')
-
-    return kendall_matrix
+    return gene_exp_slopes, atac_slopes, acet_slopes, met_slopes
 
 
 def distance(X, Y, square=True):
@@ -274,7 +252,7 @@ def fast_genomic_distance_to_similarity(link_matrix, c, d):
     return 1 / (((link_matrix / c) ** (10 * d)) + 1)
 
 
-def get_genomic_distance_matrix(link_ds, add_self_loops_genomic, genomic_C, genomic_slope, kendall_matrix, G):
+def get_genomic_distance_matrix(link_ds, add_self_loops_genomic, genomic_C, genomic_slope, G):
     genes = link_ds.index.unique().tolist()
     ccres = link_ds.cCRE_ID.unique().tolist()
     entity_number = len(genes + ccres)
@@ -302,7 +280,7 @@ def get_genomic_distance_matrix(link_ds, add_self_loops_genomic, genomic_C, geno
         G.add_edge(gene_idx, ccre_idx, weight=distance_score)
 
 
-    dense_A = torch.Tensor(dense_A) * kendall_matrix
+    dense_A = torch.Tensor(dense_A)
 
     return dense_A, G
 
@@ -395,7 +373,6 @@ def build_graph(X,ge_count,ccre_count, primitive_gene_clusters, primitive_ccre_c
 
 
 def data_preprocessing(datapath, reports_path, primitive_ccre_ds_path, genes_to_pick, device,
-                       wk_atac=0.05, wk_acet=0.05, wk_meth=0.05,
                        genomic_C = 3e5, genomic_slope = 0.4,
                        add_self_loops_genomic=False, chr_to_filter=None):
     ## Data preprocessing:
@@ -414,9 +391,11 @@ def data_preprocessing(datapath, reports_path, primitive_ccre_ds_path, genes_to_
 
     G = build_graph(X, ge_count,ccre_count, ge_class_labels, ccre_class_labels)
 
-    kendall_matrix = get_kendall_matrix(X, ge_count, ccre_count, wk_atac=wk_atac, wk_acet=wk_acet, wk_meth=wk_meth)
+    gene_exp_slopes, atac_slopes, acet_slopes, met_slopes = get_slopes(X, ge_count)
 
-    gen_dist_score, G = get_genomic_distance_matrix(link_ds, add_self_loops_genomic, genomic_C, genomic_slope, kendall_matrix, G )
+    slopes = [gene_exp_slopes, atac_slopes, acet_slopes, met_slopes]
+
+    gen_dist_score, G = get_genomic_distance_matrix(link_ds, add_self_loops_genomic, genomic_C, genomic_slope, G )
 
 
 
@@ -431,7 +410,24 @@ def data_preprocessing(datapath, reports_path, primitive_ccre_ds_path, genes_to_
     X /= torch.max(X)
     X = torch.Tensor(X).to(device)
 
-    return X, G, ge_count, ccre_count, distance_matrices, gen_dist_score, ccre_ds, kendall_matrix, ge_class_labels, ccre_class_labels
+    return X, G, ge_count, ccre_count, distance_matrices, slopes, gen_dist_score, ccre_ds, ge_class_labels, ccre_class_labels
+
+
+def get_disctinct_colors(n):
+    # https://www.quora.com/How-do-I-generate-n-visually-distinct-RGB-colours-in-Python
+    huePartition = 1.0 / (n + 1)
+    colors = np.zeros((n,1,3))
+    color_list = []
+
+    for value in range(0, n):
+        color_list.append(np.array(colorsys.hsv_to_rgb(huePartition * value, 1.0, 1.0)).reshape(1,3))
+
+    random.shuffle(color_list)
+
+    for pos in range(0, n):
+        colors[pos] = color_list.pop()
+
+    return colors
 
 
 #####
@@ -542,8 +538,8 @@ class AdaGAE():
                  ge_count,
                  ccre_count,
                  distance_matrices,
+                 slopes,
                  gen_dist_score,
-                 kendall_matrix,
                  init_sparsity,
                  ge_class_labels,
                  ccre_class_labels,
@@ -558,8 +554,8 @@ class AdaGAE():
                  init_genomic_slope=0.4,
                  init_genomic_C=3e5,
                  init_alpha_D=0,
-                 init_RQ_loss_weight=0.1,
-                 init_agg_repulsive=1,
+                 init_RQ_loss_weight=0,
+                 init_agg_repulsive=0,
                  init_attractive_loss_weight=0.1,
                  init_repulsive_loss_weight=1,
                  init_lambda_repulsive=0.5,
@@ -573,8 +569,7 @@ class AdaGAE():
                  init_alpha_ACET=1,
                  init_alpha_METH=1,
                  differential_sparsity=True,
-                 eval_flag=False,
-                 default_cmap=plt.cm.jet):
+                 eval_flag=False):
 
         super(AdaGAE, self).__init__()
 
@@ -584,13 +579,16 @@ class AdaGAE():
         self.D_ATAC = distance_matrices[1]
         self.D_ACET = distance_matrices[2]
         self.D_METH = distance_matrices[3]
+        self.gene_exp_slopes = slopes[0]
+        self.atac_slopes = slopes[1]
+        self.acet_slopes = slopes[2]
+        self.met_slopes = slopes[3]
         self.init_alpha_Z = init_alpha_Z
         self.init_alpha_G = init_alpha_G
         self.init_alpha_ATAC = init_alpha_ATAC
         self.init_alpha_ACET = init_alpha_ACET
         self.init_alpha_METH = init_alpha_METH
         self.S_D = gen_dist_score
-        self.kendall_matrix = kendall_matrix
         self.ge_class_labels = ge_class_labels
         self.ccre_class_labels = ccre_class_labels
         self.eval_flag = eval_flag
@@ -665,11 +663,36 @@ class AdaGAE():
         if not self.pre_trained: self.init_embedding()
 
 
+    def get_kendall_matrix(self, wk_atac=0.05, wk_acet=0.05, wk_meth=0.05):
+
+        dim = self.ge_count + self.ccre_count
+        kendall_matrix = torch.zeros(dim, dim)
+
+        ccre_slopes = ((wk_atac * self.atac_slopes) + (wk_acet * self.acet_slopes) - (wk_meth * self.met_slopes))
+
+        ccre_trend_upright_submatrix = np.repeat(ccre_slopes.reshape(-1, 1), self.ge_count).reshape(self.ccre_count,
+                                                                                               -1).transpose()
+        gene_trend_upright_submatrix = np.repeat(self.gene_exp_slopes.reshape(1, -1), self.ccre_count).reshape(self.ge_count, -1)
+        kendall_matrix[:self.ge_count, self.ge_count:] = torch.Tensor(gene_trend_upright_submatrix + ccre_trend_upright_submatrix)
+
+        gene_trend_downleft_submatrix = np.repeat(self.gene_exp_slopes.reshape(-1, 1), self.ccre_count).reshape(-1,
+                                                                                                      self.ccre_count).transpose()
+        ccre_trend_downleft_submatrix = np.repeat(ccre_slopes.reshape(1, -1), self.ge_count).reshape(self.ccre_count, -1)
+        kendall_matrix[self.ge_count:, :self.ge_count] = torch.Tensor(
+            gene_trend_downleft_submatrix + ccre_trend_downleft_submatrix)
+        kendall_matrix.abs_()
+        # row-wise scaling
+        kendall_matrix /= (kendall_matrix.max(dim=1)[0] + 1e-10).reshape(-1, 1)
+
+        return kendall_matrix
+
+
     def init_graph_plot_conf(self):
         self.primitive_clusters = list(set(nx.get_node_attributes(self.G, 'primitive_cluster').values()))
         self.primitive_clusters.sort()
         cluster_count = len(self.primitive_clusters)
-        cluster_colors = torch.rand((cluster_count, 1, 3)).numpy()
+        #cluster_colors = torch.rand((cluster_count, 1, 3)).numpy()
+        cluster_colors = get_disctinct_colors(cluster_count)
         self.cluster_colors = {k: v for k, v in zip(self.primitive_clusters, cluster_colors)}
         self.cluster_nodes_dict = {}
 
@@ -680,15 +703,22 @@ class AdaGAE():
         self.graph_edges_dict = nx.get_edge_attributes(self.G, 'weight')
 
 
-    def plot_graph(self):
+    def plot_graph(self, title=''):
 
         pos = self.gae_nn.embedding.detach().cpu().numpy()
         for primitive_cluster in self.cluster_nodes_dict.items():
             curr_pos_dict = {k: v for k, v in zip(primitive_cluster[1], pos[primitive_cluster[1]])}
             current_color = self.cluster_colors[primitive_cluster[0]]
+            if primitive_cluster[0][:5] == 'ccres':
+                current_alpha = 0.5
+                current_size = 20
+            else:
+                current_alpha = None
+                current_size = 80
             nx.draw_networkx_nodes(self.G, curr_pos_dict, nodelist=primitive_cluster[1],
                                    node_color=current_color,
-                                   node_size=100,
+                                   node_size=current_size,
+                                   alpha=current_alpha,
                                    label=primitive_cluster[0])
 
         nx.draw_networkx_edges(self.G, pos,
@@ -699,6 +729,9 @@ class AdaGAE():
 
         plt.gca()
         plt.legend()
+        if title != '':
+            plt.title(title)
+
         if not self.eval_flag:
             self.send_image_to_tensorboard(plt, GRAPH_PLOT_TAG)
 
@@ -1137,12 +1170,17 @@ class AdaGAE():
 
             self.S = self.CAN_precomputed_dist(D)
 
+            kendall_coeff = 1 - self.alpha_D
+            self.kendall_matrix = self.get_kendall_matrix(wk_atac=kendall_coeff, wk_acet=kendall_coeff,
+                                                          wk_meth=kendall_coeff)
 
         temp_alpha_CCRES = (self.alpha_ACET+self.alpha_METH+self.alpha_ATAC) / 3
         temp_alpha_SYMM = (temp_alpha_CCRES + self.alpha_G) / 2
         temp_alpha_S = (temp_alpha_SYMM + self.alpha_Z) / 2
 
-        self.adj = (self.S * temp_alpha_S) + (self.S_D * self.alpha_D)
+
+
+        self.adj = (self.S * temp_alpha_S) + (self.S_D * self.kendall_matrix)
 
 
         # row-wise scaling
@@ -1399,25 +1437,24 @@ def manual_run(gae,
             gae.epoch_losses.append(loss.item())
 
         mean_loss = sum(gae.epoch_losses) / len(gae.epoch_losses)
-
         reward = gae.evaluate()
 
-        print('epoch:%3d,' % epoch,
-              'reward:%3d,' % reward,
-              'mean loss:%3d,' % mean_loss,
-              'gbf: %6.3f' % alpha_D,
-              'CE_attr_w: %6.3f' % current_attractive_loss_weight,
-              'CE_rep_w: %6.3f' % current_repulsive_loss_weight,
-              'RQ_w: %6.3f' % current_rq_loss_weight,
-              'AR_w: %6.3f' % current_aggresive_rep_loss_weight,
-              'spars:%3d, ' % gae.current_sparsity,
-              'curr_clust_num:%3d,' % gae.current_cluster_number )
+        title = 'epoch: '+ str(epoch)+ \
+                ' alphaD: ' +str(gae.alpha_D) + \
+                ' Attr: ' + str(gae.current_attractive_loss_weight) + \
+                ' Rep: ' + str(gae.current_repulsive_loss_weight) + \
+                ' spars: ' + str(gae.current_sparsity) + \
+                '\ncurr_clust_num: ' + str(gae.current_cluster_number) + \
+                ' alpha_G: '+ str(gae.alpha_G) + ' alpha_ATAC: ' +str(gae.alpha_ATAC) + \
+                ' alpha_ACET: ' + str(gae.alpha_ACET) + ' alpha_METH: ' + str(gae.alpha_METH) + \
+                '\nalpha_Z: ' + str(gae.alpha_Z) + ' alpha_D: ' + str(alpha_D)
+        print(title)
 
         if gae.layers[-1] > 2:
           if epoch%10==0:
             gae.plot_graph()
         else:
-          gae.plot_graph()
+          gae.plot_graph(title)
 
     print('gae.current_cluster_number', gae.current_cluster_number)
 
