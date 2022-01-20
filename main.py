@@ -2,7 +2,10 @@
 '''
 
 # colab Notebook
-ccre_primitive_clusters_path = '/content/DIAGdrive/MyDrive/RL_developmental_studies/Reports/cCRE Clustering/'
+datapath = "/content/drive/MyDrive/GE_Datasets/"
+reports_path= '/content/drive/MyDrive/RL_developmental_studies/Reports/tight_var_data/'
+results_path=  "/content/drive/MyDrive/GE_Datasets/results/"
+primitive_ccre_ds_path = '/content/drive/MyDrive/RL_developmental_studies/Reports/cCRE Clustering/variable_k/agglomerative_clust_cCRE_8.csv'
 '''
 
 '''
@@ -33,12 +36,9 @@ from torch.utils.tensorboard import SummaryWriter
 plt.rcParams["figure.figsize"] = (10, 10)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-genes_to_pick = 0
 
+genes_to_pick = 0
 learning_rate = 5 * 10 ** -3
-wk_atac = .5
-wk_acet = .1
-wk_meth = .5
 init_sparsity = 100
 
 if __name__ == '__main__':
@@ -51,7 +51,7 @@ if __name__ == '__main__':
 
 
 
-    modelname = '/sketches4'
+    modelname = '/sketches5'
     tensorboard = SummaryWriter(LOG_DIR + modelname)
 
 
@@ -60,48 +60,31 @@ if __name__ == '__main__':
                  tensorboard, device=device, datapath = datapath)
 
 
-    # mode 1:
-    # STEP 1:
-
+    #schema 1 - step 1
     manual_run(gae, max_epoch=10, init_sparsity=100, sparsity_increment=10,
+               init_alpha_D=0, final_alpha_D=0,
+               init_alpha_G=1, final_alpha_G=1,
+               init_alpha_ATAC=1, final_alpha_ATAC=1,
+               init_alpha_ACET=1, final_alpha_ACET=1,
+               init_alpha_METH=1, final_alpha_METH=1,
+               init_alpha_Z=0, final_alpha_Z=0,
+               init_attractive_loss_weight=0, final_attractive_loss_weight=1,
+               init_repulsive_loss_weight=0, final_repulsive_loss_weight=0,
+               max_iter=15)
+
+    gae.differential_sparsity = False
+
+    manual_run(gae, max_epoch=10, init_sparsity=100, sparsity_increment=5,
                init_alpha_D=1, final_alpha_D=1,
                init_alpha_G=0, final_alpha_G=0,
                init_alpha_ATAC=0, final_alpha_ATAC=0,
                init_alpha_ACET=0, final_alpha_ACET=0,
                init_alpha_METH=0, final_alpha_METH=0,
-               init_alpha_Z=0, final_alpha_Z=0.5,
-               init_attractive_loss_weight=0, final_attractive_loss_weight=500,
-               init_repulsive_loss_weight=100, final_repulsive_loss_weight=0,
-               max_iter=15)
-
-    # gae.differential_sparsity = True
-    # STEP 2:
-
-    manual_run(gae, max_epoch=10, init_sparsity=100, sparsity_increment=20,
-               init_alpha_D=0, final_alpha_D=0,
-               init_alpha_G=0, final_alpha_G=0,
-               init_alpha_ATAC=0, final_alpha_ATAC=0,
-               init_alpha_ACET=0, final_alpha_ACET=0,
-               init_alpha_METH=0, final_alpha_METH=0,
-               init_alpha_Z=1, final_alpha_Z=1,
-               init_attractive_loss_weight=0, final_attractive_loss_weight=100,
+               init_alpha_Z=0, final_alpha_Z=0,
+               init_attractive_loss_weight=1, final_attractive_loss_weight=1,
                init_repulsive_loss_weight=0, final_repulsive_loss_weight=0,
                max_iter=15)
 
-
-    # mode 2
-    #step 1
-    # manual_run(gae, max_epoch=10, init_sparsity=100, sparsity_increment=10,
-    #            init_alpha_D=0, final_alpha_D=0,
-    #            init_alpha_G=1, final_alpha_G=1,
-    #            init_alpha_ATAC=1, final_alpha_ATAC=1,
-    #            init_alpha_ACET=1, final_alpha_ACET=1,
-    #            init_alpha_METH=1, final_alpha_METH=1,
-    #            init_alpha_Z=0, final_alpha_Z=0,
-    #            init_attractive_loss_weight=0, final_attractive_loss_weight=100,
-    #            init_repulsive_loss_weight=0, final_repulsive_loss_weight=0,
-    #            max_iter=15)
-    #
     #
     # alpha_SYMMs = [0.5, 0]
     # alpha_Ds = [0, 1]

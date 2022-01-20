@@ -8,12 +8,11 @@ torch.quantile(self.S.float(), torch.tensor([.986,.987,.989,.99]))
 
 backup_state_dict = gae.gae_nn.state_dict()
 backup_embedding = gae.gae_nn.embedding.detach().cpu()
+
+
+
+
 gae.reset()
-
-
-
-
-
 gae.gae_nn.load_state_dict(backup_state_dict)
 gae.gae_nn.embedding = backup_embedding
 

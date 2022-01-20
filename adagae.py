@@ -127,8 +127,6 @@ def get_distance_matrices(X, ge_count):
     return ge_distances, atac_distances, acet_distances, met_distances
 
 
-
-
 def get_slopes(X, ge_count):
 
     numpy_X = X.cpu().numpy()
@@ -449,6 +447,9 @@ ALPHA_G: str = 'Alpha_G'
 ALPHA_METH: str = 'Alpha_METH'
 ALPHA_ACET: str = 'Alpha_ACET'
 ALPHA_ATAC: str = 'Alpha_ATAC'
+WK_ATAC: str = 'WK_ATAC'
+WK_ACET: str = 'WK_ACET'
+WK_METH: str = 'WK_METH'
 ALPHA_Z: str = 'Alpha_Z'
 GENOMIC_C_LABEL: str = 'GenomicC'
 REPULSIVE_CE_LOSS_WEIGHT_LABEL: str = 'RepulsiveCELossWeight'
@@ -568,7 +569,10 @@ class AdaGAE():
                  init_alpha_ATAC=1,
                  init_alpha_ACET=1,
                  init_alpha_METH=1,
-                 differential_sparsity=True,
+                 init_wk_ATAC=.5,
+                 init_wk_ACET=.1,
+                 init_wk_METH=.5,
+                 differential_sparsity=False,
                  eval_flag=False):
 
         super(AdaGAE, self).__init__()
@@ -588,6 +592,9 @@ class AdaGAE():
         self.init_alpha_ATAC = init_alpha_ATAC
         self.init_alpha_ACET = init_alpha_ACET
         self.init_alpha_METH = init_alpha_METH
+        self.init_wk_ATAC = init_wk_ATAC
+        self.init_wk_ACET = init_wk_ACET
+        self.init_wk_METH = init_wk_METH
         self.S_D = gen_dist_score
         self.ge_class_labels = ge_class_labels
         self.ccre_class_labels = ccre_class_labels
@@ -651,6 +658,9 @@ class AdaGAE():
         self.alpha_ATAC = self.init_alpha_ATAC
         self.alpha_ACET = self.init_alpha_ACET
         self.alpha_METH = self.init_alpha_METH
+        self.wk_ATAC = self.prev_wk_ATAC = self.init_wk_ATAC
+        self.wk_ACET = self.prev_wk_ACET = self.init_wk_ACET
+        self.wk_METH = self.prev_wk_METH = self.init_wk_METH
         self.alpha_Z = self.init_alpha_Z
         self.current_rq_loss_weight = self.init_RQ_loss_weight
         self.current_rep_agg_loss_weight = self.init_agg_repulsive
@@ -663,12 +673,12 @@ class AdaGAE():
         if not self.pre_trained: self.init_embedding()
 
 
-    def get_kendall_matrix(self, wk_atac=0.05, wk_acet=0.05, wk_meth=0.05):
+    def get_kendall_matrix(self):
 
         dim = self.ge_count + self.ccre_count
         kendall_matrix = torch.zeros(dim, dim)
 
-        ccre_slopes = ((wk_atac * self.atac_slopes) + (wk_acet * self.acet_slopes) - (wk_meth * self.met_slopes))
+        ccre_slopes = ((self.wk_ATAC * self.atac_slopes) + (self.wk_ACET * self.acet_slopes) - (self.wk_METH * self.met_slopes))
 
         ccre_trend_upright_submatrix = np.repeat(ccre_slopes.reshape(-1, 1), self.ge_count).reshape(self.ccre_count,
                                                                                                -1).transpose()
@@ -803,7 +813,7 @@ class AdaGAE():
         # If we use the Fuzzy Cross Entropy. (Binary cross entropy)
         # We could create a REPULSIVE force
         # https://towardsdatascience.com/how-exactly-umap-works-13e3040e1668
-        repulsive_CE_term = -(1 - self.raw_adj) * torch.log(1-recons)
+        repulsive_CE_term = -(1 - self.raw_adj) * torch.log(1-recons + 10 ** -10)
 
 
         #repulsive_CE_term[:self.ge_count] *= self.current_lambda_repulsive
@@ -1014,6 +1024,18 @@ class AdaGAE():
         self.alpha_Z = action[12]
         self.tensorboard.add_scalar(ALPHA_Z, self.alpha_Z, self.global_step)
 
+        self.prev_wk_ATAC =self.wk_ATAC
+        self.wk_ATAC = action[13]
+        self.tensorboard.add_scalar(WK_ATAC, self.wk_ATAC, self.global_step)
+
+        self.prev_wk_ACET = self.wk_ACET
+        self.wk_ACET = action[14]
+        self.tensorboard.add_scalar(WK_ACET, self.wk_ACET, self.global_step)
+
+        self.prev_wk_METH = self.wk_METH
+        self.wk_METH = action[15]
+        self.tensorboard.add_scalar(WK_METH, self.wk_METH, self.global_step)
+
 
         self.update_graph()
         self.current_cluster_number = math.floor((self.ge_count + self.ccre_count) / self.current_sparsity)
@@ -1128,9 +1150,25 @@ class AdaGAE():
         return weights
 
 
+    def update_graph_weights(self):
+
+        link_positions = torch.where(self.kendall_matrix != 0)
+        edges_list = []
+        weight_list = []
+        new_weights = self.S_D * self.kendall_matrix
+
+        for idx in range(link_positions[0].shape[0]):
+
+            edges_list.append((link_positions[0][idx].item(), link_positions[1][idx].item()))
+            single_weight_dict = {
+                'weight': new_weights[link_positions[0][idx].item()][link_positions[1][idx].item()].item()}
+            weight_list.append(single_weight_dict)
+
+        weights_dictionary = dict(zip(edges_list, weight_list))
+        nx.set_edge_attributes(self.G, weights_dictionary)
 
 
-    def compute_P(self, prev_embedding, first_time=False):
+    def compute_P(self, prev_embedding, first_time=False, force_recompute_S=False):
 
         tras_prev_embedding = prev_embedding.t().detach()
 
@@ -1138,7 +1176,7 @@ class AdaGAE():
 
         if first_time:
             self.D_Z = torch.ones(element_count, element_count)
-        elif self.prev_sparsity != self.current_sparsity:
+        elif self.prev_sparsity != self.current_sparsity or force_recompute_S:
             self.D_Z = distance(tras_prev_embedding, tras_prev_embedding)
             self.D_Z = torch.max(self.D_Z, torch.t(self.D_Z))
             # abs scaling
@@ -1148,7 +1186,7 @@ class AdaGAE():
         # we add weight to some edges of the graph
         # based on the original graph information.
 
-        if first_time or (self.prev_sparsity != self.current_sparsity):
+        if first_time or (self.prev_sparsity != self.current_sparsity) or force_recompute_S:
 
 
             temp_D_SYMM = torch.ones(element_count, element_count)
@@ -1170,9 +1208,15 @@ class AdaGAE():
 
             self.S = self.CAN_precomputed_dist(D)
 
-            kendall_coeff = 1 - self.alpha_D
-            self.kendall_matrix = self.get_kendall_matrix(wk_atac=kendall_coeff, wk_acet=kendall_coeff,
-                                                          wk_meth=kendall_coeff)
+        if first_time or self.prev_wk_ACET != self.wk_ACET \
+            or self.prev_wk_ATAC != self.wk_ATAC \
+            or self.prev_wk_METH != self.wk_METH:
+
+            self.kendall_matrix = self.get_kendall_matrix()
+            # the following line updates the fancy graph links
+            # based on the actual "kendall discounted" weights.
+            # NOTE: It slows down a lot the programm... Use with CAUTION
+            #self.update_graph_weights()
 
         temp_alpha_CCRES = (self.alpha_ACET+self.alpha_METH+self.alpha_ATAC) / 3
         temp_alpha_SYMM = (temp_alpha_CCRES + self.alpha_G) / 2
@@ -1180,7 +1224,7 @@ class AdaGAE():
 
 
 
-        self.adj = (self.S * temp_alpha_S) + (self.S_D * self.kendall_matrix)
+        self.adj = (self.S * temp_alpha_S) + (self.S_D * self.kendall_matrix * self.alpha_D)
 
 
         # row-wise scaling
@@ -1236,6 +1280,51 @@ class AdaGAE():
         if not self.eval_flag:
             self.send_image_to_tensorboard(plt, UMAP_CLUSTER_PLOT_TAG)
         plt.show()
+
+
+    def backup(self):
+        
+        backup_bundle = {}
+        
+        backup_bundle['embedding'] = self.gae_nn.embedding.detach().cpu()
+        backup_bundle['state_dict'] = self.gae_nn.state_dict()
+        backup_bundle['alpha_D'] = self.alpha_D
+        backup_bundle['alpha_G'] = self.alpha_G
+        backup_bundle['alpha_ATAC'] = self.alpha_ATAC
+        backup_bundle['alpha_ACET'] = self.alpha_ACET
+        backup_bundle['alpha_METH'] = self.alpha_METH
+        backup_bundle['alpha_Z'] = self.alpha_Z
+        backup_bundle['wk_ATAC'] = self.wk_ATAC
+        backup_bundle['wk_ACET'] = self.wk_ACET
+        backup_bundle['wk_METH'] = self.wk_METH
+        backup_bundle['current_sparsity'] = self.current_sparsity
+        backup_bundle['global_step'] = self.global_step
+        backup_bundle['differential_sparsity'] = self.differential_sparsity
+        backup_bundle['current_gene_sparsity'] = self.current_gene_sparsity
+
+
+        return backup_bundle
+
+
+    def load_state_from(self, backup_bundle):
+
+        self.gae_nn.embedding = backup_bundle['embedding']
+        self.gae_nn.load_state_dict(backup_bundle['state_dict'])
+        self.alpha_D = backup_bundle['alpha_D']
+        self.alpha_G = backup_bundle['alpha_G']
+        self.alpha_ATAC = backup_bundle['alpha_ATAC']
+        self.alpha_METH = backup_bundle['alpha_METH']
+        self.alpha_ACET = backup_bundle['alpha_ACET']
+        self.alpha_Z = backup_bundle['alpha_Z']
+        self.wk_ATAC = backup_bundle['wk_ATAC']
+        self.wk_ACET = backup_bundle['wk_ACET']
+        self.wk_METH = backup_bundle['wk_METH']
+        self.current_sparsity = backup_bundle['current_sparsity']
+        self.global_step = backup_bundle['global_step']
+        self.differential_sparsity = backup_bundle['differential_sparsity']
+        self.current_gene_sparsity = backup_bundle['current_gene_sparsity']
+
+        self.compute_P(self.gae_nn.embedding.cpu(), force_recompute_S=True)
 
 
     def plot_classes(self, bi_dim_embedding=None, only_ccres=False, title=None):
@@ -1313,7 +1402,10 @@ class AdaGAE():
                     alpha_ACET=1,
                     alpha_METH=1,
                     alpha_Z=1,
-                    max_iter=15):
+                    max_iter=15,
+                    wk_ATAC=.5,
+                    wk_ACET=.1,
+                    wk_METH=.5):
 
         self.epoch_losses = []
 
@@ -1331,7 +1423,10 @@ class AdaGAE():
                                          alpha_ATAC,
                                          alpha_METH,
                                          alpha_ACET,
-                                         alpha_Z]).to(self.device)
+                                         alpha_Z,
+                                         wk_ATAC,
+                                         wk_ACET,
+                                         wk_METH]).to(self.device)
 
             loss = self.step(dummy_action)
 
@@ -1377,6 +1472,12 @@ def manual_run(gae,
                final_lambda_repulsive=0.5,
                init_agg_repulsive=0,
                final_agg_repulsive=0,
+               init_wk_ATAC=.5,
+               final_wk_ATAC=.5,
+               init_wk_ACET=.1,
+               final_wk_ACET=.1,
+               init_wk_METH=.5,
+               final_wk_METH=.5,
                max_iter=15):
 
     current_sparsity = init_sparsity
@@ -1397,6 +1498,10 @@ def manual_run(gae,
         alpha_METH = gae.get_dinamic_param(init_alpha_METH, final_alpha_METH, T)
         alpha_ACET = gae.get_dinamic_param(init_alpha_ACET, final_alpha_ACET, T)
         alpha_Z = gae.get_dinamic_param(init_alpha_Z, final_alpha_Z, T)
+        wkATAC = gae.get_dinamic_param(init_wk_ATAC, final_wk_ATAC, T)
+        wkACET = gae.get_dinamic_param(init_wk_ACET, final_wk_ACET, T)
+        wkMETH = gae.get_dinamic_param(init_wk_METH, final_wk_METH, T)
+
         current_rq_loss_weight = gae.get_dinamic_param(init_RQ_loss_weight, final_RQ_loss_weight, T)
 
         current_attractive_loss_weight = gae.get_dinamic_param(init_attractive_loss_weight,
@@ -1430,7 +1535,10 @@ def manual_run(gae,
                                          alpha_ATAC,
                                          alpha_METH,
                                          alpha_ACET,
-                                         alpha_Z]).to(gae.device)
+                                         alpha_Z,
+                                         wkATAC,
+                                         wkACET,
+                                         wkMETH]).to(gae.device)
 
             loss = gae.step(dummy_action)
 
@@ -1440,14 +1548,17 @@ def manual_run(gae,
         reward = gae.evaluate()
 
         title = 'epoch: '+ str(epoch)+ \
-                ' alphaD: ' +str(gae.alpha_D) + \
                 ' Attr: ' + str(gae.current_attractive_loss_weight) + \
                 ' Rep: ' + str(gae.current_repulsive_loss_weight) + \
                 ' spars: ' + str(gae.current_sparsity) + \
-                '\ncurr_clust_num: ' + str(gae.current_cluster_number) + \
+                ' curr_clust_num: ' + str(gae.current_cluster_number) + \
+                '\nalphaD: ' + str(gae.alpha_D) + \
                 ' alpha_G: '+ str(gae.alpha_G) + ' alpha_ATAC: ' +str(gae.alpha_ATAC) + \
                 ' alpha_ACET: ' + str(gae.alpha_ACET) + ' alpha_METH: ' + str(gae.alpha_METH) + \
-                '\nalpha_Z: ' + str(gae.alpha_Z) + ' alpha_D: ' + str(alpha_D)
+                ' alpha_Z: ' + str(gae.alpha_Z) + \
+                '\nwkATAC: ' + str(gae.wk_ATAC) + \
+                ' wkACET: ' + str(gae.wk_ACET) + \
+                ' wkMETH: ' + str(gae.wk_METH)
         print(title)
 
         if gae.layers[-1] > 2:
