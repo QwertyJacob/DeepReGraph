@@ -1109,8 +1109,8 @@ class AdaGAE():
             T_genes = top_k_genes - distances[:self.ge_count, ]
 
             # equation 20 in the paper. notice that self.current_sparsity = k. ONLY GENES
-            #weights_genes = torch.div(T_genes, self.current_gene_sparsity * top_k_genes - sum_top_k_genes)
-            weights_genes = T_genes / (T_genes.max(dim=1)[0].reshape(-1,1) + 1e-10)
+            weights_genes = torch.div(T_genes, self.current_gene_sparsity * top_k_genes - sum_top_k_genes + 1e-10)
+            #weights_genes = T_genes / (T_genes.max(dim=1)[0].reshape(-1,1) + 1e-10)
 
 
             # distance to the k-th nearest neighbor ONLY CCRES:
@@ -1125,8 +1125,8 @@ class AdaGAE():
             T_ccres = top_k_ccres - distances[self.ge_count:, ]
 
             # equation 20 in the paper. notice that self.current_sparsity = k. ONLY CCRES
-            #weights_ccres = torch.div(T_ccres, self.current_sparsity * top_k_ccres - sum_top_k_ccres)
-            weights_ccres = T_ccres / (T_ccres.max(dim=1)[0].reshape(-1,1) + 1e-10)
+            weights_ccres = torch.div(T_ccres, self.current_sparsity * top_k_ccres - sum_top_k_ccres + 1e-10)
+            #weights_ccres = T_ccres / (T_ccres.max(dim=1)[0].reshape(-1,1) + 1e-10)
 
             weights = torch.cat((weights_genes, weights_ccres))
 
@@ -1141,7 +1141,8 @@ class AdaGAE():
 
             T = top_k - distances
 
-            weights = torch.div(T, self.current_sparsity * top_k - sum_top_k)
+            weights = torch.div(T, self.current_sparsity * top_k - sum_top_k + 1e-10)
+            #weights = T / (T.max(dim=1)[0].reshape(-1,1) + 1e-10)
 
         weights = weights.relu()
 
