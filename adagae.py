@@ -1302,7 +1302,7 @@ class AdaGAE():
         backup_bundle['global_step'] = self.global_step
         backup_bundle['differential_sparsity'] = self.differential_sparsity
         backup_bundle['current_gene_sparsity'] = self.current_gene_sparsity
-
+        backup_bundle['kendall_matrix'] = self.kendall_matrix
 
         return backup_bundle
 
@@ -1324,6 +1324,7 @@ class AdaGAE():
         self.global_step = backup_bundle['global_step']
         self.differential_sparsity = backup_bundle['differential_sparsity']
         self.current_gene_sparsity = backup_bundle['current_gene_sparsity']
+        self.kendall_matrix = backup_bundle['kendall_matrix']
 
         self.compute_P(self.gae_nn.embedding.cpu(), force_recompute_S=True)
 
@@ -1371,7 +1372,6 @@ class AdaGAE():
         if not self.eval_flag:
             self.send_image_to_tensorboard(plt, UMAP_CLASS_PLOT_TAG)
         plt.show()
-
 
     def send_image_to_tensorboard(self, plt, tag):
         buf = io.BytesIO()

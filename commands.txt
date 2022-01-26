@@ -1,3 +1,8 @@
+
+#---------------------------------
+#---------------------------------
+#---------------------------------
+
 torch.quantile(self.D_Z[self.ge_count:,self.ge_count:], torch.tensor([.25,.5,.75,.9]))
 
 torch.quantile(self.S_D[self.ge_count:,:self.ge_count].float(), torch.tensor([.986,.987,.988,.989,.99]))
@@ -6,61 +11,37 @@ torch.quantile(self.S.float(), torch.tensor([.986,.987,.989,.99]))
 
 
 
-backup_state_dict = gae.gae_nn.state_dict()
-backup_embedding = gae.gae_nn.embedding.detach().cpu()
+#---------------------------------
+#---------------------------------
+#---------------------------------
+
+modelname = '/opening'
+tensorboard = SummaryWriter(LOG_DIR + modelname)
+
+
+gae = AdaGAE(X, G, ge_count, ccre_count, distance_matrices, slopes,
+             gen_dist_score, init_sparsity, ge_class_labels, ccre_class_labels,
+             tensorboard, device=device, datapath = datapath)
 
 
 
+#---------------------------------
+#---------------------------------
+#---------------------------------
 
-gae.reset()
-gae.gae_nn.load_state_dict(backup_state_dict)
-gae.gae_nn.embedding = backup_embedding
-
-
-
-
-gae = AdaGAE(X,ge_count,ccre_count,distance_matrices,
-                 links,kendall_matrix,init_sparsity,ge_class_labels,
-                 tensorboard,device=device,datapath = datapath)
-
-# STEP 1:
-
-manual_run(gae, max_epoch=10, init_sparsity=100, sparsity_increment=10,
-            init_alpha_D=1, final_alpha_D=1,
-            init_alpha_G=0, final_alpha_G=0,
-            init_alpha_ATAC=0, final_alpha_ATAC=0,
-            init_alpha_ACET=0, final_alpha_ACET=0,
-            init_alpha_METH=0, final_alpha_METH=0,
-            init_alpha_Z=0, final_alpha_Z=0.5,
-            init_attractive_loss_weight=0, final_attractive_loss_weight=500,
-            init_repulsive_loss_weight=100, final_repulsive_loss_weight=0,
-            max_iter=15)
+backupsito = gae.backup()
 
 
+#---------------------------------
+#---------------------------------
+#---------------------------------
+
+gae.load_state_from(backupsito)
 
 
-gae.differential_sparsity = True
-# STEP 2:
-
-manual_run(gae, max_epoch=10, init_sparsity=200, sparsity_increment=10,
-            init_alpha_D=0, final_alpha_D=1,
-            init_alpha_G=0, final_alpha_G=0,
-            init_alpha_ATAC=0, final_alpha_ATAC=0,
-            init_alpha_ACET=0, final_alpha_ACET=0,
-            init_alpha_METH=0, final_alpha_METH=0,
-            init_alpha_Z=1, final_alpha_Z=1,
-            init_attractive_loss_weight=0, final_attractive_loss_weight=500,
-            init_repulsive_loss_weight=0, final_repulsive_loss_weight=0,
-            max_iter=15)
-
-tensorboard.close()
-#fixed_spars_run(gae)
-
-
-
-
-
-
+#---------------------------------
+#---------------------------------
+#---------------------------------
 
 
 
@@ -68,28 +49,28 @@ tensorboard.close()
 #   other
 #-------------------------------------------------------------------
 #step 1
-manual_run(gae, max_epoch=10, init_sparsity=100, sparsity_increment=20,
-           init_alpha_D=0, final_alpha_D=0,
-           init_alpha_G=1, final_alpha_G=1,
-           init_alpha_ATAC=1, final_alpha_ATAC=1,
-           init_alpha_ACET=1, final_alpha_ACET=1,
-           init_alpha_METH=1, final_alpha_METH=1,
+manual_run(gae, max_epoch=10, init_sparsity=101, sparsity_increment=5,
+           init_alpha_D=1, final_alpha_D=1,
+           init_alpha_G=0.5, final_alpha_G=0.5,
+           init_alpha_ATAC=.1, final_alpha_ATAC=.1,
+           init_alpha_ACET=.1, final_alpha_ACET=.1,
+           init_alpha_METH=.1, final_alpha_METH=.1,
            init_alpha_Z=0, final_alpha_Z=0,
-           init_attractive_loss_weight=0, final_attractive_loss_weight=100,
-           init_repulsive_loss_weight=1, final_repulsive_loss_weight=0,
+           init_attractive_loss_weight=1, final_attractive_loss_weight=1,
+           init_repulsive_loss_weight=0, final_repulsive_loss_weight=0,
            max_iter=15)
 
 
 
 #step 2
-manual_run(gae, max_epoch=10, init_sparsity=300, sparsity_increment=5,
-            init_alpha_D=0.5, final_alpha_D=0.7,
-            init_alpha_G=0.3, final_alpha_G=0.3,
-            init_alpha_ATAC=0.3, final_alpha_ATAC=0.3,
-            init_alpha_ACET=0.3, final_alpha_ACET=0.3,
-            init_alpha_METH=0.3, final_alpha_METH=0.3,
-            init_alpha_Z=0, final_alpha_Z=0,
-            init_attractive_loss_weight=0, final_attractive_loss_weight=500,
+manual_run(gae, max_epoch=10, init_sparsity=152, sparsity_increment=5,
+            init_alpha_D=0.5, final_alpha_D=0.5,
+            init_alpha_G=0.03, final_alpha_G=0.03,
+            init_alpha_ATAC=0.03, final_alpha_ATAC=0.03,
+            init_alpha_ACET=0.03, final_alpha_ACET=0.03,
+            init_alpha_METH=0.03, final_alpha_METH=0.03,
+            init_alpha_Z=0, final_alpha_Z=1,
+            init_attractive_loss_weight=1, final_attractive_loss_weight=1,
             init_repulsive_loss_weight=0, final_repulsive_loss_weight=0,
             max_iter=15)
 
@@ -99,12 +80,6 @@ manual_run(gae, max_epoch=10, init_sparsity=300, sparsity_increment=5,
 
 #-------------------------------------------------------------------
 #   BEST OPENING
-
-# wk_atac = .5
-# wk_acet = .1
-# wk_meth = .5
-# init_sparsity = 100
-# DIFFERENTIAL SPARSITY???
 #-------------------------------------------------------------------
 #step 1
 manual_run(gae, max_epoch=10, init_sparsity=100, sparsity_increment=20,
@@ -139,3 +114,58 @@ manual_run(gae, max_epoch=10, init_sparsity=300, sparsity_increment=5,
 gae.run_1_epoch(current_sparsity=101,alpha_D=1, attractive_loss_weight=1,repulsive_loss_weight=1,
                     alpha_G=0.1,alpha_ATAC=0.1,alpha_ACET=0.1,alpha_METH=0.1,alpha_Z=0,max_iter=15)
 gae.plot_graph()
+
+
+#####################
+##################
+####################
+
+
+    #
+    # alpha_SYMMs = [0.5, 0]
+    # alpha_Ds = [0, 1]
+    # alpha_value_index = 0
+    # alphaD = alpha_Ds[alpha_value_index]
+    # alphaG = alpha_SYMMs[alpha_value_index]
+    # alphaATAC = alpha_SYMMs[alpha_value_index]
+    # alphaACET = alpha_SYMMs[alpha_value_index]
+    # alphaMETH = alpha_SYMMs[alpha_value_index]
+    #
+    # def toogle_alphas():
+    #     global alphaD, alphaG, alphaATAC, alphaACET, alphaMETH
+    #     global alpha_value_index
+    #
+    #     alpha_value_index += 1
+    #
+    #     alphaD = alpha_Ds[alpha_value_index%2]
+    #     alphaG = alpha_SYMMs[alpha_value_index%2]
+    #     alphaACET = alpha_SYMMs[alpha_value_index%2]
+    #     alphaATAC = alpha_SYMMs[alpha_value_index%2]
+    #     alphaMETH = alpha_SYMMs[alpha_value_index%2]
+    #
+    #
+    #
+    # curr_spars = 300
+    # max_epochs = 10
+    # iters_per_epoch = 45
+    # init_alphaZ = 0.3
+    # final_alphaZ = 1
+    # init_attr = 1000
+    # final_attr = 1000
+    # init_rep = 100
+    # final_rep = 100
+    # T = max_epochs * iters_per_epoch
+    # for epochs in range(0,max_epochs):
+    #
+    #     toogle_alphas()
+    #     alphaZ = 1
+    #     rep = gae.get_dinamic_param(init_rep, final_rep, T)
+    #     attr_force = gae.get_dinamic_param(init_attr, final_attr, T)
+    #     gae.run_1_epoch(current_sparsity=curr_spars, alpha_D=alphaD, attractive_loss_weight=attr_force,
+    #                     repulsive_loss_weight=rep, alpha_G=alphaG, alpha_ATAC=alphaATAC, alpha_ACET=alphaACET,
+    #                     alpha_METH=alphaMETH, alpha_Z=alphaZ, max_iter=iters_per_epoch)
+    #     gae.plot_classes()
+    #
+    #     tensorboard.close()
+    #     #fixed_spars_run(gae)
+    #
