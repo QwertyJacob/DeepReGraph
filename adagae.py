@@ -570,7 +570,8 @@ class AdaGAE():
                  init_wk_ACET=.1,
                  init_wk_METH=.5,
                  differential_sparsity=False,
-                 eval_flag=False):
+                 eval_flag=False,
+                 update_graph_option=False):
 
         super(AdaGAE, self).__init__()
 
@@ -620,7 +621,10 @@ class AdaGAE():
         self.clusterize = clusterize
         self.learning_rate = learning_rate
         self.datapath = datapath
-
+        # the following option turns on the fancy graph link update
+        # based on the actual "kendall discounted" weights.
+        # NOTE: It slows down a lot the programm... Use with CAUTION
+        self.update_graph_option = update_graph_option
         self.reset()
 
         classes = ['gene', 'ccre']
@@ -1203,10 +1207,9 @@ class AdaGAE():
             or self.prev_wk_METH != self.wk_METH:
 
             self.kendall_matrix = self.get_kendall_matrix()
-            # the following line updates the fancy graph links
-            # based on the actual "kendall discounted" weights.
-            # NOTE: It slows down a lot the programm... Use with CAUTION
-            #self.update_graph_weights()
+
+            if self.update_graph_option:
+                self.update_graph_weights()
 
         temp_alpha_CCRES = (self.alpha_ACET+self.alpha_METH+self.alpha_ATAC) / 3
         temp_alpha_SYMM = (temp_alpha_CCRES + self.alpha_G) / 2
@@ -1519,8 +1522,8 @@ def manual_run(gae,
 
             gae.epoch_losses.append(loss.item())
 
-        mean_loss = sum(gae.epoch_losses) / len(gae.epoch_losses)
-        reward = gae.evaluate()
+        # mean_loss = sum(gae.epoch_losses) / len(gae.epoch_losses)
+        # reward = gae.evaluate()
 
         title = 'epoch: '+ str(epoch)+ \
                 ' Attr: ' + str(gae.current_attractive_loss_weight) + \

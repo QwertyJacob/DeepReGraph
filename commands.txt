@@ -15,7 +15,7 @@ torch.quantile(self.S.float(), torch.tensor([.986,.987,.989,.99]))
 #---------------------------------
 #---------------------------------
 
-modelname = '/opening'
+modelname = '/full3'
 tensorboard = SummaryWriter(LOG_DIR + modelname)
 
 
@@ -56,7 +56,7 @@ manual_run(gae, max_epoch=10, init_sparsity=101, sparsity_increment=5,
            init_alpha_ACET=.1, final_alpha_ACET=.1,
            init_alpha_METH=.1, final_alpha_METH=.1,
            init_alpha_Z=0, final_alpha_Z=0,
-           init_attractive_loss_weight=1, final_attractive_loss_weight=1,
+           init_attractive_loss_weight=0, final_attractive_loss_weight=1,
            init_repulsive_loss_weight=1, final_repulsive_loss_weight=0,
            max_iter=15)
 
@@ -72,14 +72,20 @@ manual_run(gae, max_epoch=10, init_sparsity=152, sparsity_increment=5,
             init_alpha_Z=0, final_alpha_Z=1,
             init_attractive_loss_weight=1, final_attractive_loss_weight=1,
             init_repulsive_loss_weight=0, final_repulsive_loss_weight=0,
-            max_iter=15)
+            max_iter=15,
+            init_wk_ATAC=.5,
+           final_wk_ATAC=1,
+           init_wk_ACET=.1,
+           final_wk_ACET=1,
+           init_wk_METH=.5,
+           final_wk_METH=1)
 
 
 
             
 
 #-------------------------------------------------------------------
-#   BEST OPENING
+#   OTHER
 #-------------------------------------------------------------------
 #step 1
 manual_run(gae, max_epoch=10, init_sparsity=100, sparsity_increment=20,
