@@ -441,7 +441,6 @@ RQ_QUOTIENT_LOSS: str = 'RQ Quotient Loss'
 RP_AGGRESSIVE_LOSS: str = 'Rep Aggressive Loss'
 RP_AGGRESSIVE_LOSS_WEIGHT: str = 'Rep Aggressive Loss Weight'
 TOTAL_LOSS_LABEL: str = 'Total_Loss'
-RQ_LOSS_WEIGHT: str = 'RQ_Loss_weight'
 ALPHA_D: str = 'Alpha_D'
 ALPHA_G: str = 'Alpha_G'
 ALPHA_METH: str = 'Alpha_METH'
@@ -555,8 +554,6 @@ class AdaGAE():
                  init_genomic_slope=0.4,
                  init_genomic_C=3e5,
                  init_alpha_D=0,
-                 init_RQ_loss_weight=0,
-                 init_agg_repulsive=0,
                  init_attractive_loss_weight=0.1,
                  init_repulsive_loss_weight=1,
                  init_lambda_repulsive=0.5,
@@ -615,8 +612,6 @@ class AdaGAE():
         self.init_genomic_slope =init_genomic_slope
         self.init_genomic_C = init_genomic_C
         self.init_alpha_D = init_alpha_D
-        self.init_RQ_loss_weight = init_RQ_loss_weight
-        self.init_agg_repulsive = init_agg_repulsive
         self.init_attractive_loss_weight = init_attractive_loss_weight
         self.init_repulsive_loss_weight = init_repulsive_loss_weight
         self.init_lambda_repulsive = init_lambda_repulsive
@@ -662,8 +657,6 @@ class AdaGAE():
         self.wk_ACET = self.prev_wk_ACET = self.init_wk_ACET
         self.wk_METH = self.prev_wk_METH = self.init_wk_METH
         self.alpha_Z = self.init_alpha_Z
-        self.current_rq_loss_weight = self.init_RQ_loss_weight
-        self.current_rep_agg_loss_weight = self.init_agg_repulsive
         self.current_cluster_number = math.ceil((self.ge_count + self.ccre_count) / self.current_sparsity)
         self.init_adj_matrices()
         self.current_attractive_loss_weight = self.init_attractive_loss_weight
@@ -843,8 +836,8 @@ class AdaGAE():
         # be exactly equation (11) in the AdaGAE paper.
         loss += self.current_attractive_loss_weight * attractive_CE_term
         loss += self.current_repulsive_loss_weight * repulsive_CE_term
-        loss += self.current_rq_loss_weight * rayleigh_quotient_loss
-        loss += self.current_rep_agg_loss_weight * repulsive_aggressive_loss
+        loss += self.current_attractive_loss_weight * rayleigh_quotient_loss
+        loss += self.current_repulsive_loss_weight * repulsive_aggressive_loss
         self.tensorboard.add_scalar(TOTAL_LOSS_LABEL, loss.item(), self.global_step)
 
         self.adj.to('cpu')
@@ -981,59 +974,55 @@ class AdaGAE():
 
         action = action.detach().to('cpu').numpy()
 
-        self.current_rq_loss_weight = action[0]
-        self.tensorboard.add_scalar(RQ_LOSS_WEIGHT, float(self.current_rq_loss_weight), self.global_step)
 
         self.prev_sparsity = self.current_sparsity
-        self.current_sparsity = int(action[1])
+        self.current_sparsity = int(action[0])
         self.current_gene_sparsity = math.ceil(self.current_sparsity / self.global_ccres_over_genes_ratio)
         self.tensorboard.add_scalar(SPARSITY_LABEL, self.current_sparsity, self.global_step)
         self.tensorboard.add_scalar(GENE_SPARSITY_LABEL, self.current_gene_sparsity, self.global_step)
 
-        self.alpha_D = action[2]
+        self.alpha_D = action[1]
         self.tensorboard.add_scalar(ALPHA_D, float(self.alpha_D),
                                     self.global_step)
 
-        self.current_attractive_loss_weight = action[3]
+        self.current_attractive_loss_weight = action[2]
         self.tensorboard.add_scalar(ATTRACTIVE_CE_LOSS_WEIGHT_LABEL, self.current_attractive_loss_weight, self.global_step)
 
-        self.current_lambda_attractive = action[4]
+        self.current_lambda_attractive = action[3]
         self.tensorboard.add_scalar(LAMBDA_ATTRACTIVE_LABEL, self.current_lambda_attractive, self.global_step)
 
-        self.current_repulsive_loss_weight = action[5]
+        self.current_repulsive_loss_weight = action[4]
         self.tensorboard.add_scalar(REPULSIVE_CE_LOSS_WEIGHT_LABEL, self.current_repulsive_loss_weight, self.global_step)
 
-        self.current_lambda_repulsive = action[6]
+        self.current_lambda_repulsive = action[5]
         self.tensorboard.add_scalar(LAMBDA_REPULSIVE_LABEL, self.current_lambda_repulsive, self.global_step)
 
-        self.current_rep_agg_loss_weight = action[7]
-        self.tensorboard.add_scalar(RP_AGGRESSIVE_LOSS_WEIGHT, self.current_rep_agg_loss_weight, self.global_step)
 
-        self.alpha_G = action[8]
+        self.alpha_G = action[6]
         self.tensorboard.add_scalar(ALPHA_G, self.alpha_G, self.global_step)
 
-        self.alpha_ATAC = action[9]
+        self.alpha_ATAC = action[7]
         self.tensorboard.add_scalar(ALPHA_ATAC, self.alpha_ATAC, self.global_step)
 
-        self.alpha_METH = action[10]
+        self.alpha_METH = action[8]
         self.tensorboard.add_scalar(ALPHA_METH, self.alpha_METH, self.global_step)
 
-        self.alpha_ACET = action[11]
+        self.alpha_ACET = action[9]
         self.tensorboard.add_scalar(ALPHA_ACET, self.alpha_ACET, self.global_step)
 
-        self.alpha_Z = action[12]
+        self.alpha_Z = action[10]
         self.tensorboard.add_scalar(ALPHA_Z, self.alpha_Z, self.global_step)
 
         self.prev_wk_ATAC =self.wk_ATAC
-        self.wk_ATAC = action[13]
+        self.wk_ATAC = action[11]
         self.tensorboard.add_scalar(WK_ATAC, self.wk_ATAC, self.global_step)
 
         self.prev_wk_ACET = self.wk_ACET
-        self.wk_ACET = action[14]
+        self.wk_ACET = action[12]
         self.tensorboard.add_scalar(WK_ACET, self.wk_ACET, self.global_step)
 
         self.prev_wk_METH = self.wk_METH
-        self.wk_METH = action[15]
+        self.wk_METH = action[13]
         self.tensorboard.add_scalar(WK_METH, self.wk_METH, self.global_step)
 
 
@@ -1392,12 +1381,10 @@ class AdaGAE():
     def run_1_epoch(self,
                     current_sparsity=200,
                     alpha_D=0,
-                    rq_loss_weight=0,
                     attractive_loss_weight=1,
                     repulsive_loss_weight=1,
                     lambda_attractive=0.5,
                     lambda_repulsive=0.5,
-                    agg_repulsive=0,
                     alpha_G=1,
                     alpha_ATAC=1,
                     alpha_ACET=1,
@@ -1412,14 +1399,12 @@ class AdaGAE():
 
         for i in range(max_iter):
 
-            dummy_action = torch.Tensor([rq_loss_weight,
-                                         current_sparsity,
+            dummy_action = torch.Tensor([current_sparsity,
                                          alpha_D,
                                          attractive_loss_weight,
                                          lambda_attractive,
                                          repulsive_loss_weight,
                                          lambda_repulsive,
-                                         agg_repulsive,
                                          alpha_G,
                                          alpha_ATAC,
                                          alpha_METH,
@@ -1461,8 +1446,6 @@ def manual_run(gae,
                final_alpha_METH=0,
                init_alpha_Z=0,
                final_alpha_Z=1,
-               init_RQ_loss_weight=0,
-               final_RQ_loss_weight=0,
                init_attractive_loss_weight=0.1,
                final_attractive_loss_weight=1,
                init_repulsive_loss_weight=1,
@@ -1471,8 +1454,6 @@ def manual_run(gae,
                final_lambda_attractive=0.5,
                init_lambda_repulsive=0.5,
                final_lambda_repulsive=0.5,
-               init_agg_repulsive=0,
-               final_agg_repulsive=0,
                init_wk_ATAC=.5,
                final_wk_ATAC=.5,
                init_wk_ACET=.1,
@@ -1503,8 +1484,6 @@ def manual_run(gae,
         wkACET = gae.get_dinamic_param(init_wk_ACET, final_wk_ACET, T)
         wkMETH = gae.get_dinamic_param(init_wk_METH, final_wk_METH, T)
 
-        current_rq_loss_weight = gae.get_dinamic_param(init_RQ_loss_weight, final_RQ_loss_weight, T)
-
         current_attractive_loss_weight = gae.get_dinamic_param(init_attractive_loss_weight,
                                                                final_attractive_loss_weight, T)
 
@@ -1517,21 +1496,16 @@ def manual_run(gae,
         current_lambda_repulsive = gae.get_dinamic_param(init_lambda_repulsive,
                                                         final_lambda_repulsive, T)
 
-        current_aggresive_rep_loss_weight = gae.get_dinamic_param(init_agg_repulsive,
-                                                        final_agg_repulsive, T)
-
         gae.epoch_losses = []
 
         for i in range(max_iter):
 
-            dummy_action = torch.Tensor([current_rq_loss_weight,
-                                         current_sparsity,
+            dummy_action = torch.Tensor([current_sparsity,
                                          alpha_D,
                                          current_attractive_loss_weight,
                                          current_lambda_attractive,
                                          current_repulsive_loss_weight,
                                          current_lambda_repulsive,
-                                         current_aggresive_rep_loss_weight,
                                          alpha_G,
                                          alpha_ATAC,
                                          alpha_METH,
