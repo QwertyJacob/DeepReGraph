@@ -15,7 +15,7 @@ torch.quantile(self.S.float(), torch.tensor([.986,.987,.989,.99]))
 #---------------------------------
 #---------------------------------
 
-modelname = '/full3'
+modelname = '/experiment'
 tensorboard = SummaryWriter(LOG_DIR + modelname)
 
 

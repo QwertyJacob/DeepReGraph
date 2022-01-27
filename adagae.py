@@ -707,10 +707,11 @@ class AdaGAE():
             self.cluster_nodes_dict[primitive_cluster] = [x for x, y in self.G.nodes(data=True) if
                                                           y['primitive_cluster'] == primitive_cluster]
 
-        self.graph_edges_dict = nx.get_edge_attributes(self.G, 'weight')
 
 
     def plot_graph(self, title=''):
+
+        graph_edges_dict = nx.get_edge_attributes(self.G, 'weight')
 
         pos = self.gae_nn.embedding.detach().cpu().numpy()
         for primitive_cluster in self.cluster_nodes_dict.items():
@@ -729,8 +730,8 @@ class AdaGAE():
                                    label=primitive_cluster[0])
 
         nx.draw_networkx_edges(self.G, pos,
-                               edgelist=self.graph_edges_dict.keys(),
-                               width=list(self.graph_edges_dict.values()),
+                               edgelist=graph_edges_dict.keys(),
+                               width=list(graph_edges_dict.values()),
                                edge_color='lightblue',
                                alpha=0.6)
 
@@ -1077,8 +1078,15 @@ class AdaGAE():
         return reward
 
 
-    def get_dinamic_param(self, init_value, final_value, T):
-        return init_value + ((final_value - init_value) * (1 / (1 + math.e ** (-1 * (self.iteration - (T/ 2)) / (T/10)))))
+    def get_dinamic_param(self, init_value, final_value, T, sigmoid=False):
+
+        if sigmoid:
+
+            return init_value + ((final_value - init_value) * (1 / (1 + math.e ** (-1 * (self.iteration - (T/ 2)) / (T/10)))))
+
+        else:
+
+            return init_value + ((final_value - init_value) * self.iteration / T )
 
     def CAN_precomputed_dist(self, distances):
 
@@ -1147,19 +1155,20 @@ class AdaGAE():
     def update_graph_weights(self):
 
         link_positions = torch.where(self.kendall_matrix != 0)
-        edges_list = []
-        weight_list = []
         new_weights = self.S_D * self.kendall_matrix
 
         for idx in range(link_positions[0].shape[0]):
 
-            edges_list.append((link_positions[0][idx].item(), link_positions[1][idx].item()))
-            single_weight_dict = {
-                'weight': new_weights[link_positions[0][idx].item()][link_positions[1][idx].item()].item()}
-            weight_list.append(single_weight_dict)
+            posA = link_positions[0][idx].item()
+            posB = link_positions[1][idx].item()
+            new_weight = new_weights[posA][posB].item()
+            self.G.add_edge(posA, posB, weight=new_weight)
 
-        weights_dictionary = dict(zip(edges_list, weight_list))
-        nx.set_edge_attributes(self.G, weights_dictionary)
+
+    def update_kendall_matrix(self):
+
+        self.kendall_matrix = self.get_kendall_matrix()
+
 
 
     def compute_P(self, prev_embedding, first_time=False, force_recompute_S=False):
@@ -1206,7 +1215,7 @@ class AdaGAE():
             or self.prev_wk_ATAC != self.wk_ATAC \
             or self.prev_wk_METH != self.wk_METH:
 
-            self.kendall_matrix = self.get_kendall_matrix()
+            self.update_kendall_matrix()
 
             if self.update_graph_option:
                 self.update_graph_weights()
