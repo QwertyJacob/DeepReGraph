@@ -1156,7 +1156,7 @@ class AdaGAE():
 
         link_positions = torch.where(self.kendall_matrix != 0)
         new_weights = self.S_D * self.kendall_matrix
-
+        self.G.remove_edges_from(list(self.G.edges))
         for idx in range(link_positions[0].shape[0]):
 
             posA = link_positions[0][idx].item()

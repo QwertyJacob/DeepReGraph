@@ -15,7 +15,7 @@ torch.quantile(self.S.float(), torch.tensor([.986,.987,.989,.99]))
 #---------------------------------
 #---------------------------------
 
-modelname = '/experiment'
+modelname = '/new_exp_2'
 tensorboard = SummaryWriter(LOG_DIR + modelname)
 
 
@@ -51,7 +51,7 @@ gae.load_state_from(backupsito)
 #step 1
 manual_run(gae, max_epoch=10, init_sparsity=101, sparsity_increment=5,
            init_alpha_D=1, final_alpha_D=1,
-           init_alpha_G=1, final_alpha_G=0.5,
+           init_alpha_G=1, final_alpha_G=0.3,
            init_alpha_ATAC=.1, final_alpha_ATAC=.1,
            init_alpha_ACET=.1, final_alpha_ACET=.1,
            init_alpha_METH=.1, final_alpha_METH=.1,
