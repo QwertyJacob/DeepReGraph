@@ -220,7 +220,7 @@ learning_rate = 5 * 10 ** -3
 ################
 
 
-X, G, ge_count, ccre_count, distance_matrices, slopes, gen_dist_score, ccre_ds, ge_class_labels, ccre_class_labels = \
+X, G, ge_count, ccre_count, distance_matrices, slopes, gen_dist_score, ccre_ds, ge_class_labels, ccre_class_labels, gene_ds = \
 	data_preprocessing(datapath, reports_path, primitive_ccre_ds_path, genes_to_pick, device)
 
 
@@ -232,7 +232,7 @@ tensorboard = SummaryWriter(LOG_DIR + modelname)
 
 adagae_obj = AdaGAE(X, G, ge_count, ccre_count, distance_matrices, slopes,
 					gen_dist_score, init_spars, ge_class_labels, ccre_class_labels,
-					tensorboard, device=device, datapath = datapath)
+					tensorboard, gene_ds,ccre_ds, device=device, datapath = datapath)
 
 
 emb_pool = AdaGAEPool(pool_size)

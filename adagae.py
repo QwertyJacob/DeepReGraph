@@ -408,7 +408,11 @@ def data_preprocessing(datapath, reports_path, primitive_ccre_ds_path, genes_to_
     X /= torch.max(X)
     X = torch.Tensor(X).to(device)
 
-    return X, G, ge_count, ccre_count, distance_matrices, slopes, gen_dist_score, ccre_ds, ge_class_labels, ccre_class_labels
+    gene_ds = link_ds.reset_index().drop_duplicates('EnsembleID')[['EnsembleID','Heart_E10_5', 'Heart_E11_5', 'Heart_E12_5',
+                                                                     'Heart_E13_5', 'Heart_E14_5', 'Heart_E15_5',
+                                                                     'Heart_E16_5', 'Heart_P0']]
+
+    return X, G, ge_count, ccre_count, distance_matrices, slopes, gen_dist_score, ccre_ds, ge_class_labels, ccre_class_labels, gene_ds
 
 
 def get_disctinct_colors(n):
@@ -544,6 +548,8 @@ class AdaGAE():
                  ge_class_labels,
                  ccre_class_labels,
                  tensorboard,
+                 gene_ds,
+                 ccre_ds,
                  device=None,
                  pre_trained=False,
                  pre_trained_state_dict='models/combined_adagae_z12_initk150_150epochs',
@@ -621,6 +627,8 @@ class AdaGAE():
         self.clusterize = clusterize
         self.learning_rate = learning_rate
         self.datapath = datapath
+        self.gene_ds = gene_ds
+        self.ccre_ds = ccre_ds
         # the following option turns on the fancy graph link update
         # based on the actual "kendall discounted" weights.
         # NOTE: It slows down a lot the programm... Use with CAUTION
@@ -707,6 +715,18 @@ class AdaGAE():
             self.cluster_nodes_dict[primitive_cluster] = [x for x, y in self.G.nodes(data=True) if
                                                           y['primitive_cluster'] == primitive_cluster]
 
+
+    def print_gene_trends(self):
+
+        self.gene_ds['cluster'] = self.current_prediction[:self.gene_ds.count()[0]]
+        print_trends(self.gene_ds)
+
+
+    def print_ccre_trends(self):
+
+        self.ccre_ds['cluster'] = self.current_prediction[self.ge_count:]
+        self.ccre_ds['silhouette_va'] = 1
+        print_ccre_trends(self.ccre_ds.drop('cCRE_ID', axis=1))
 
 
     def plot_graph(self, title=''):

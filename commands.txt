@@ -15,13 +15,13 @@ torch.quantile(self.S.float(), torch.tensor([.986,.987,.989,.99]))
 #---------------------------------
 #---------------------------------
 
-modelname = '/new5'
+modelname = '/closin3bis'
 tensorboard = SummaryWriter(LOG_DIR + modelname)
 
 
 gae = AdaGAE(X, G, ge_count, ccre_count, distance_matrices, slopes,
              gen_dist_score, init_sparsity, ge_class_labels, ccre_class_labels,
-             tensorboard, device=device, datapath = datapath)
+             tensorboard, gene_ds,ccre_ds, device=device, datapath = datapath)
 
 
 
@@ -43,7 +43,7 @@ with open('local_models\\backupsito', 'rb') as input_backup_adagae:
     backupsito = pickle.load(input_backup_adagae)
 
 gae.load_state_from(backupsito)
-modelname = '/frombu3'
+modelname = '/closing2'
 tensorboard = SummaryWriter(LOG_DIR + modelname)
 gae.tensorboard = tensorboard
 
@@ -54,7 +54,7 @@ gae.tensorboard = tensorboard
 
 
 #-------------------------------------------------------------------
-#   BEST FIRST STEP EVER
+#   BEST FIRST AND SECOND STEP EVER
 #-------------------------------------------------------------------
 #step 1
 manual_run(gae, max_epoch=10, init_sparsity=101, sparsity_increment=5,
@@ -78,21 +78,21 @@ manual_run(gae, max_epoch=10, init_sparsity=101, sparsity_increment=5,
 
 #step 2
 manual_run(gae, max_epoch=10, init_sparsity=152, sparsity_increment=5,
-            init_alpha_D=1, final_alpha_D=0,
-            init_alpha_G=0.03, final_alpha_G=0.03,
-            init_alpha_ATAC=0.03, final_alpha_ATAC=0.03,
-            init_alpha_ACET=0.03, final_alpha_ACET=0.03,
-            init_alpha_METH=0.03, final_alpha_METH=0.03,
-            init_alpha_Z=0, final_alpha_Z=1,
+            init_alpha_D=1, final_alpha_D=1,
+            init_alpha_G=0.0, final_alpha_G=0.0,
+            init_alpha_ATAC=0.0, final_alpha_ATAC=0.0,
+            init_alpha_ACET=0.0, final_alpha_ACET=0.0,
+            init_alpha_METH=0.0, final_alpha_METH=0.0,
+            init_alpha_Z=0.1, final_alpha_Z=.1,
             init_attractive_loss_weight=1, final_attractive_loss_weight=1,
             init_repulsive_loss_weight=0, final_repulsive_loss_weight=0,
             max_iter=15,
-            init_wk_ATAC=.5,
+            init_wk_ATAC=1,
            final_wk_ATAC=1,
-           init_wk_ACET=.1,
-           final_wk_ACET=1,
-           init_wk_METH=.5,
-           final_wk_METH=1)
+           init_wk_ACET=0,
+           final_wk_ACET=0,
+           init_wk_METH=0,
+           final_wk_METH=0)
 
 
 
