@@ -24,6 +24,8 @@ import networkx as nx
 import matplotlib as mpl
 import colorsys
 import random
+from sklearn.metrics import confusion_matrix
+from sklearn.decomposition import PCA
 
 #######################
 # HELPER FUNCTIONS#####
@@ -715,6 +717,42 @@ class AdaGAE():
             self.cluster_nodes_dict[primitive_cluster] = [x for x, y in self.G.nodes(data=True) if
                                                           y['primitive_cluster'] == primitive_cluster]
 
+    def plot_gene_pca(self):
+
+        pca = PCA(n_components=2)
+        Z = pca.fit_transform(self.gene_ds.values[:, 1:-1])
+
+        # generate a list of markers and another of colors
+        plt.rcParams["figure.figsize"] = (20, 10)
+        for cluster in self.gene_ds['cluster'].unique():
+            cluster_points = Z[self.current_prediction[:self.ge_count] == cluster]
+            plt.scatter(cluster_points[:, 0],
+                        cluster_points[:, 1],
+                        label='Cluster' + str(cluster))
+        plt.legend()
+        plt.title('Explained Variance Ratio: ' + str(pca.explained_variance_ratio_) + '   Singluar Values: ' + str(
+            pca.singular_values_))
+        plt.show()
+
+
+    def plot_ccre_pca(self):
+
+        pca = PCA(n_components=2)
+        Z = pca.fit_transform(self.ccre_ds.values[:, 1:])
+
+        # generate a list of markers and another of colors
+        plt.rcParams["figure.figsize"] = (20, 10)
+        for cluster in self.ccre_ds['cluster'].unique():
+            cluster_points = Z[self.current_prediction[self.ge_count:] == cluster]
+            plt.scatter(cluster_points[:, 0],
+                        cluster_points[:, 1],
+                        label='Cluster' + str(cluster))
+        plt.legend()
+        plt.title(
+            'cCRE PCA: Explained Variance Ratio: ' + str(pca.explained_variance_ratio_) + '   Singluar Values: ' + str(
+                pca.singular_values_))
+        plt.show()
+
 
     def print_gene_trends(self):
 
@@ -727,6 +765,138 @@ class AdaGAE():
         self.ccre_ds['cluster'] = self.current_prediction[self.ge_count:]
         self.ccre_ds['silhouette_va'] = 1
         print_ccre_trends(self.ccre_ds.drop('cCRE_ID', axis=1))
+
+
+    def print_trends(self):
+
+        ccre_datasets = [x for _, x in self.ccre_ds.groupby('cluster')]
+        gene_datasets = [x for _, x in self.gene_ds.groupby('cluster')]
+
+        for i, dss in enumerate(zip(gene_datasets, ccre_datasets)):
+
+            fig, (ax0, ax1, ax2, ax3) = plt.subplots(1, 4)
+
+            fig.suptitle('ge cluster ' + str(dss[0]['cluster'].iloc[0]) + ' len ' + str(
+                dss[0].count()[0]) + ' ccre cluster ' + str(dss[1]['cluster'].iloc[0]) + ' len ' + str(
+                dss[1].count()[0]))
+            fig.set_size_inches(40, 5)
+            ccre_stats = dss[1].describe()
+
+            # gene plots
+            sup_ge_trend = np.array([pd.Series(dss[0]['Heart_E10_5']).quantile(0.75),
+                                     pd.Series(dss[0]['Heart_E11_5']).quantile(0.75),
+                                     pd.Series(dss[0]['Heart_E12_5']).quantile(0.75),
+                                     pd.Series(dss[0]['Heart_E13_5']).quantile(0.75),
+                                     pd.Series(dss[0]['Heart_E14_5']).quantile(0.75),
+                                     pd.Series(dss[0]['Heart_E15_5']).quantile(0.75),
+                                     pd.Series(dss[0]['Heart_E16_5']).quantile(0.75),
+                                     pd.Series(dss[0]['Heart_P0']).quantile(0.75)])
+            inf_ge_trend = np.array([pd.Series(dss[0]['Heart_E10_5']).quantile(0.25),
+                                     pd.Series(dss[0]['Heart_E11_5']).quantile(0.25),
+                                     pd.Series(dss[0]['Heart_E12_5']).quantile(0.25),
+                                     pd.Series(dss[0]['Heart_E13_5']).quantile(0.25),
+                                     pd.Series(dss[0]['Heart_E14_5']).quantile(0.25),
+                                     pd.Series(dss[0]['Heart_E15_5']).quantile(0.25),
+                                     pd.Series(dss[0]['Heart_E16_5']).quantile(0.25),
+                                     pd.Series(dss[0]['Heart_P0']).quantile(0.25)])
+
+            for index, row in dss[0].iterrows():
+                ax0.plot(['Heart_E10_5', 'Heart_E11_5', 'Heart_E12_5', 'Heart_E13_5', 'Heart_E14_5', 'Heart_E15_5',
+                          'Heart_E16_5', 'Heart_P0'],
+                         row[['Heart_E10_5', 'Heart_E11_5', 'Heart_E12_5', 'Heart_E13_5', 'Heart_E14_5', 'Heart_E15_5',
+                              'Heart_E16_5', 'Heart_P0']],
+                         label=row[['EnsembleID']], color='y', marker='o', alpha=0.1)
+
+                ax0.fill_between(
+                    x=['Heart_E10_5', 'Heart_E11_5', 'Heart_E12_5', 'Heart_E13_5', 'Heart_E14_5', 'Heart_E15_5',
+                       'Heart_E16_5', 'Heart_P0'], y1=inf_ge_trend, y2=sup_ge_trend)
+
+            # ccre plots
+
+            ccre_third_percentile = ccre_stats.loc['75%'].values.tolist()
+            ccre_first_percentile = ccre_stats.loc['25%'].values.tolist()
+
+            for index, row in dss[1].iterrows():
+
+                ax1.plot(['E10_5_atac', 'E11_5_atac',
+                          'E12_5_atac', 'E13_5_atac', 'E14_5_atac',
+                          'E15_5_atac', 'E16_5_atac', 'P0_atac'], row[['Heart_E10_5_atac', 'Heart_E11_5_atac',
+                                                                       'Heart_E12_5_atac', 'Heart_E13_5_atac',
+                                                                       'Heart_E14_5_atac',
+                                                                       'Heart_E15_5_atac', 'Heart_E16_5_atac',
+                                                                       'Heart_P0_atac']], color='y',
+                         marker='o', alpha=0.1)
+                ax1.fill_between(x=['E10_5_atac', 'E11_5_atac',
+                                    'E12_5_atac', 'E13_5_atac', 'E14_5_atac',
+                                    'E15_5_atac', 'E16_5_atac', 'P0_atac'], y1=ccre_first_percentile[16:-2],
+                                 y2=ccre_third_percentile[16:-2], color='black')
+
+                ax2.plot(['E10_5_acet',
+                          'E11_5_acet', 'E12_5_acet', 'E13_5_acet',
+                          'E14_5_acet', 'E15_5_acet', 'E16_5_acet',
+                          'P0_acet'], row[['Heart_E10_5_acet',
+                                           'Heart_E11_5_acet', 'Heart_E12_5_acet', 'Heart_E13_5_acet',
+                                           'Heart_E14_5_acet', 'Heart_E15_5_acet', 'Heart_E16_5_acet',
+                                           'Heart_P0_acet']], color='y', marker='o', alpha=0.1)
+                ax2.fill_between(x=['E10_5_acet',
+                                    'E11_5_acet', 'E12_5_acet', 'E13_5_acet',
+                                    'E14_5_acet', 'E15_5_acet', 'E16_5_acet',
+                                    'P0_acet'], y1=ccre_first_percentile[8:16], y2=ccre_third_percentile[8:16],
+                                 color='black')
+
+                ax3.plot(['E10_5_met', 'E11_5_met', 'E12_5_met',
+                          'E13_5_met', 'E14_5_met', 'E15_5_met',
+                          'E16_5_met', 'P0_met'], row[['Heart_E10_5_met', 'Heart_E11_5_met', 'Heart_E12_5_met',
+                                                       'Heart_E13_5_met', 'Heart_E14_5_met', 'Heart_E15_5_met',
+                                                       'Heart_E16_5_met', 'Heart_P0_met']], color='y',
+                         marker='o', alpha=0.1)
+                ax3.fill_between(x=['E10_5_met', 'E11_5_met', 'E12_5_met',
+                                    'E13_5_met', 'E14_5_met', 'E15_5_met',
+                                    'E16_5_met', 'P0_met'], y1=ccre_first_percentile[0:8],
+                                 y2=ccre_third_percentile[0:8],
+                                 color='black')
+
+            plt.show()
+
+
+    def plot_gene_confusion_matrix(self):
+
+        y_true = list(nx.get_node_attributes(self.G, 'primitive_cluster').values())[:self.ge_count]
+        y_true = [int(prim_clust_srt.split('_')[1]) for prim_clust_srt in y_true]
+        y_pred = self.current_prediction[:self.gene_ds.count()[0]]
+        labels = list(range(-1, self.current_prediction[:self.ge_count].max() + 1))
+
+        conf_mat = confusion_matrix(y_true,
+                                    y_pred,
+                                    labels=labels)
+
+        make_confusion_matrix(conf_mat,
+                              figsize=(12, 12),
+                              group_names=labels,
+                              percent=False,
+                              ref='Primitive Gene Clusters',
+                              comp='Combined Gene clusters',
+                              title='Primitive to Combined clusters')
+
+
+    def plot_ccre_confusion_matrix(self):
+
+        y_true = list(nx.get_node_attributes(self.G, 'primitive_cluster').values())[self.ge_count:]
+        y_true = [int(prim_clust_srt.split('_')[1]) for prim_clust_srt in y_true]
+        y_pred = self.current_prediction[self.gene_ds.count()[0]:]
+        labels = list(range(-1, self.current_prediction[self.ge_count:].max() + 1))
+
+        conf_mat = confusion_matrix(y_true,
+                                    y_pred,
+                                    labels=labels)
+
+        make_confusion_matrix(conf_mat,
+                              figsize=(12, 12),
+                              group_names=labels,
+                              percent=False,
+                              ref='Primitive cCRE Clusters',
+                              comp='Combined cCRE clusters',
+                              title='Primitive to Combined cCRE clusters')
 
 
     def plot_graph(self, title=''):
