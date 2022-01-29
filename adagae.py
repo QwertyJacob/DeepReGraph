@@ -869,7 +869,7 @@ class AdaGAE():
         y_true = list(nx.get_node_attributes(self.G, 'primitive_cluster').values())[:self.ge_count]
         y_true = [int(prim_clust_srt.split('_')[1]) for prim_clust_srt in y_true]
         y_pred = self.current_prediction[:self.gene_ds.count()[0]]
-        labels = list(range(0, self.current_prediction[:self.ge_count].max()))
+        labels = list(range(0, self.current_prediction[:self.ge_count].max()+1))
 
         conf_mat = confusion_matrix(y_true,
                                     y_pred,
@@ -889,7 +889,7 @@ class AdaGAE():
         y_true = list(nx.get_node_attributes(self.G, 'primitive_cluster').values())[self.ge_count:]
         y_true = [int(prim_clust_srt.split('_')[1]) for prim_clust_srt in y_true]
         y_pred = self.current_prediction[self.gene_ds.count()[0]:]
-        labels = list(range(0, self.current_prediction[self.ge_count:].max()))
+        labels = list(range(0, self.current_prediction[self.ge_count:].max()+1))
 
         conf_mat = confusion_matrix(y_true,
                                     y_pred,
