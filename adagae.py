@@ -769,6 +769,11 @@ class AdaGAE():
 
     def print_trends(self):
 
+        self.gene_ds['cluster'] = self.current_prediction[:self.gene_ds.count()[0]]
+        self.ccre_ds['cluster'] = self.current_prediction[self.ge_count:]
+        self.ccre_ds['silhouette_va'] = 1
+
+
         ccre_datasets = [x for _, x in self.ccre_ds.groupby('cluster')]
         gene_datasets = [x for _, x in self.gene_ds.groupby('cluster')]
 
@@ -779,6 +784,7 @@ class AdaGAE():
             fig.suptitle('ge cluster ' + str(dss[0]['cluster'].iloc[0]) + ' len ' + str(
                 dss[0].count()[0]) + ' ccre cluster ' + str(dss[1]['cluster'].iloc[0]) + ' len ' + str(
                 dss[1].count()[0]))
+
             fig.set_size_inches(40, 5)
             ccre_stats = dss[1].describe()
 
