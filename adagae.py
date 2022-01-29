@@ -738,7 +738,7 @@ class AdaGAE():
     def plot_ccre_pca(self):
 
         pca = PCA(n_components=2)
-        Z = pca.fit_transform(self.ccre_ds.values[:, 1:])
+        Z = pca.fit_transform(self.ccre_ds.values[:, 1:-1])
 
         # generate a list of markers and another of colors
         plt.rcParams["figure.figsize"] = (20, 10)
@@ -771,7 +771,6 @@ class AdaGAE():
 
         self.gene_ds['cluster'] = self.current_prediction[:self.gene_ds.count()[0]]
         self.ccre_ds['cluster'] = self.current_prediction[self.ge_count:]
-        self.ccre_ds['silhouette_va'] = 1
 
 
         ccre_datasets = [x for _, x in self.ccre_ds.groupby('cluster')]
@@ -834,8 +833,8 @@ class AdaGAE():
                          marker='o', alpha=0.1)
                 ax1.fill_between(x=['E10_5_atac', 'E11_5_atac',
                                     'E12_5_atac', 'E13_5_atac', 'E14_5_atac',
-                                    'E15_5_atac', 'E16_5_atac', 'P0_atac'], y1=ccre_first_percentile[16:-2],
-                                 y2=ccre_third_percentile[16:-2], color='black')
+                                    'E15_5_atac', 'E16_5_atac', 'P0_atac'], y1=ccre_first_percentile[16:-1],
+                                 y2=ccre_third_percentile[16:-1], color='black')
 
                 ax2.plot(['E10_5_acet',
                           'E11_5_acet', 'E12_5_acet', 'E13_5_acet',
