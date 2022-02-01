@@ -737,7 +737,7 @@ class AdaGAE():
 
     def plot_ccre_pca(self):
 
-        pca = PCA(n_components=2)
+        pca = PCA(n_components=3)
         Z = pca.fit_transform(self.ccre_ds.values[:, 1:-1])
 
         # generate a list of markers and another of colors
@@ -868,8 +868,8 @@ class AdaGAE():
 
         y_true = list(nx.get_node_attributes(self.G, 'primitive_cluster').values())[:self.ge_count]
         y_true = [int(prim_clust_srt.split('_')[1]) for prim_clust_srt in y_true]
-        y_pred = self.current_prediction[:self.gene_ds.count()[0]]
-        labels = list(range(0, self.current_prediction[:self.ge_count].max()+1))
+        y_pred = self.current_prediction[:self.ge_count]
+        labels = list(range(0, y_pred.max()+1))
 
         conf_mat = confusion_matrix(y_true,
                                     y_pred,
@@ -888,8 +888,8 @@ class AdaGAE():
 
         y_true = list(nx.get_node_attributes(self.G, 'primitive_cluster').values())[self.ge_count:]
         y_true = [int(prim_clust_srt.split('_')[1]) for prim_clust_srt in y_true]
-        y_pred = self.current_prediction[self.gene_ds.count()[0]:]
-        labels = list(range(0, self.current_prediction[self.ge_count:].max()+1))
+        y_pred = self.current_prediction[self.ge_count:]
+        labels = list(range(0, y_pred.max()+1))
 
         conf_mat = confusion_matrix(y_true,
                                     y_pred,
