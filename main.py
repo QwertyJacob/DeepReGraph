@@ -45,13 +45,13 @@ init_sparsity = 100
 genomic_C = 3e5
 genomic_slope = 0.4
 
-if __name__ == '__main__':
 
 
 
-    X, G, ge_count, ccre_count, distance_matrices, slopes, gen_dist_score, ccre_ds, ge_class_labels, ccre_class_labels, gene_ds= \
-        data_preprocessing(datapath, reports_path, primitive_ccre_ds_path, genes_to_pick,
-                           device=device, genomic_C = genomic_C, genomic_slope = genomic_slope, chr_to_filter=[12,13,14,15,16,17,18])
+
+X, G, ge_count, ccre_count, distance_matrices, slopes, gen_dist_score, ccre_ds, ge_class_labels, ccre_class_labels, gene_ds= \
+    data_preprocessing(datapath, reports_path, primitive_ccre_ds_path, genes_to_pick,
+                       device=device, genomic_C = genomic_C, genomic_slope = genomic_slope, chr_to_filter=[12,13,14,15,16,17,18])
 
 
 

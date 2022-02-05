@@ -740,18 +740,47 @@ class AdaGAE():
         pca = PCA(n_components=3)
         Z = pca.fit_transform(self.ccre_ds.values[:, 1:-1])
 
-        # generate a list of markers and another of colors
-        plt.rcParams["figure.figsize"] = (20, 10)
+        fig, (ax0, ax1, ax2) = plt.subplots(3, 1)
+
+        fig.set_size_inches(15, 15)
+
         for cluster in self.ccre_ds['cluster'].unique():
             cluster_points = Z[self.current_prediction[self.ge_count:] == cluster]
-            plt.scatter(cluster_points[:, 0],
+            ax0.scatter(cluster_points[:, 0],
                         cluster_points[:, 1],
                         label='Cluster' + str(cluster))
-        plt.legend()
-        plt.title(
-            'cCRE PCA: Explained Variance Ratio: ' + str(pca.explained_variance_ratio_) + '   Singluar Values: ' + str(
-                pca.singular_values_))
-        plt.show()
+        ax0.legend()
+
+        ax0_title = 'cCRE PCA 0 and 1: Explained Variance Ratio: [ ' + str(
+            pca.explained_variance_ratio_[0]) + ' , ' + str(
+            pca.explained_variance_ratio_[1]) + ' ]. \n   Singluar Values: [ ' + str(
+            pca.singular_values_[0]) + ' , ' + str(pca.singular_values_[1]) + ' ]'
+
+        ax0.set_title(ax0_title)
+
+        for cluster in self.ccre_ds['cluster'].unique():
+            cluster_points = Z[self.current_prediction[self.ge_count:] == cluster]
+            ax1.scatter(cluster_points[:, 0],
+                        cluster_points[:, 2],
+                        label='Cluster' + str(cluster))
+        ax1.legend()
+
+        ax1_title = 'cCRE PCA 0 and 2: Explained Variance Ratio: [' + str(pca.explained_variance_ratio_[0]) + ',' + str(
+            pca.explained_variance_ratio_[2]) + ']. \n   Singluar Values: [' + str(
+            pca.singular_values_[0]) + ', ' + str(pca.singular_values_[2]) + ']'
+
+        ax1.set_title(ax1_title)
+
+        for cluster in self.ccre_ds['cluster'].unique():
+            cluster_points = Z[self.current_prediction[self.ge_count:] == cluster]
+            ax2.scatter(cluster_points[:, 1],
+                        cluster_points[:, 2],
+                        label='Cluster' + str(cluster))
+        ax2.legend()
+        ax2.set_title(
+            'cCRE PCA 1 and 2: Explained Variance Ratio: [' + str(pca.explained_variance_ratio_[1]) + ',' + str(
+                pca.explained_variance_ratio_[2]) + ']. \n   Singluar Values: [' + str(
+                pca.singular_values_[1]) + ', ' + str(pca.singular_values_[2]) + ']')
 
 
     def print_gene_trends(self):
