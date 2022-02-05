@@ -933,7 +933,7 @@ class AdaGAE():
                               title='Primitive to Combined cCRE clusters')
 
 
-    def plot_graph(self, title=''):
+    def plot_graph(self, polarized_weights=True, polarization_factor=100, title=''):
 
         graph_edges_dict = nx.get_edge_attributes(self.G, 'weight')
 
@@ -953,12 +953,19 @@ class AdaGAE():
                                    alpha=current_alpha,
                                    label=primitive_cluster[0])
 
-        nx.draw_networkx_edges(self.G, pos,
-                               edgelist=graph_edges_dict.keys(),
-                               width=list(graph_edges_dict.values()),
-                               edge_color='lightblue',
-                               alpha=0.6)
-
+        if polarized_weights:
+            new_weights = np.array(list(graph_edges_dict.values()))**polarization_factor
+            nx.draw_networkx_edges(self.G, pos,
+                                   edgelist=graph_edges_dict.keys(),
+                                   width=list(new_weights),
+                                   edge_color='lightblue',
+                                   alpha=0.6)
+        else:
+            nx.draw_networkx_edges(self.G, pos,
+                                   edgelist=graph_edges_dict.keys(),
+                                   width=list(graph_edges_dict.values()),
+                                   edge_color='lightblue',
+                                   alpha=0.6)
         plt.gca()
         plt.legend()
         if title != '':

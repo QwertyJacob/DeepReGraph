@@ -15,7 +15,7 @@ torch.quantile(self.S.float(), torch.tensor([.986,.987,.989,.99]))
 #---------------------------------
 #---------------------------------
 
-modelname = '/closin3bis'
+modelname = '/sketch'
 tensorboard = SummaryWriter(LOG_DIR + modelname)
 
 
@@ -26,7 +26,7 @@ gae = AdaGAE(X, G, ge_count, ccre_count, distance_matrices, slopes,
 
 
 #---------------------------------
-#---------------------------------
+#----------------CAUTION!!! DO NOT OVERWRITE!!!-----------------
 #---------------------------------
 
 backupsito = gae.backup()
