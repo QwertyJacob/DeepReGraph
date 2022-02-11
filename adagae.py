@@ -936,8 +936,10 @@ class AdaGAE():
     def plot_graph(self, polarized_weights=True, polarization_factor=100, title=''):
 
         graph_edges_dict = nx.get_edge_attributes(self.G, 'weight')
-
         pos = self.gae_nn.embedding.detach().cpu().numpy()
+
+        fig, ax = plt.subplots()
+
         for primitive_cluster in self.cluster_nodes_dict.items():
             curr_pos_dict = {k: v for k, v in zip(primitive_cluster[1], pos[primitive_cluster[1]])}
             current_color = self.cluster_colors[primitive_cluster[0]]
@@ -966,6 +968,8 @@ class AdaGAE():
                                    width=list(graph_edges_dict.values()),
                                    edge_color='lightblue',
                                    alpha=0.6)
+
+        ax.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
         plt.gca()
         plt.legend()
         if title != '':

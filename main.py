@@ -8,16 +8,18 @@ results_path=  "/content/drive/MyDrive/GE_Datasets/results/"
 primitive_ccre_ds_path = '/content/drive/MyDrive/RL_developmental_studies/Reports/cCRE Clustering/variable_k/agglomerative_clust_cCRE_8.csv'
 '''
 
-'''
 # Elis computer
 datapath = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\GE_Datasets_2\\'
 reports_path = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\RL_developmental_studies\\Reports\\tight_var_data\\'
-'''
+primitive_ccre_ds_path = 'C:\\Users\\Jesus Cevallos\\odrive\\Diag Drive\\RL_developmental_studies\\Reports\\cCRE Clustering\\variable_k\\agglomerative_clust_cCRE_8.csv'
 
+'''
 # Personal computer
 datapath = 'C:\\Users\\Jesus\\odrive\\Diag GDrive\\GE_Datasets_2\\'
 reports_path = 'C:\\Users\\Jesus\\odrive\\Diag GDrive\\RL_developmental_studies\\Reports\\tight_var_data\\'
 primitive_ccre_ds_path = 'C:\\Users\\Jesus\\odrive\\Diag GDrive\\RL_developmental_studies\\Reports\\cCRE Clustering\\variable_k\\agglomerative_clust_cCRE_8.csv'
+'''
+
 LOG_DIR = 'local_runs/'
 
 
