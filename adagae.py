@@ -890,6 +890,15 @@ class AdaGAE():
                                  y2=ccre_third_percentile[0:8],
                                  color='black')
 
+            for item in (ax0.get_xticklabels() + ax0.get_yticklabels() +
+                         ax1.get_xticklabels() + ax1.get_yticklabels() +
+                         ax2.get_xticklabels() + ax2.get_yticklabels() +
+                         ax3.get_xticklabels() + ax3.get_yticklabels()):
+                item.set_fontsize(20)
+
+            for item in (ax0.get_xticklabels() + ax1.get_xticklabels() + ax2.get_xticklabels() + ax3.get_xticklabels()):
+                item.set_rotation(90)
+
             plt.show()
 
 
