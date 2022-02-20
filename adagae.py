@@ -1464,13 +1464,7 @@ class AdaGAE():
             if self.update_graph_option:
                 self.update_graph_weights()
 
-        temp_alpha_CCRES = (self.alpha_ACET+self.alpha_METH+self.alpha_ATAC) / 3
-        temp_alpha_SYMM = (temp_alpha_CCRES + self.alpha_G) / 2
-        temp_alpha_S = (temp_alpha_SYMM + self.alpha_Z) / 2
-
-
-
-        self.adj = (self.S * temp_alpha_S) + (self.S_D * self.kendall_matrix * self.alpha_D)
+        self.adj = self.S + (self.S_D * self.kendall_matrix * (self.alpha_D/20))
 
 
         # row-wise scaling

@@ -57,18 +57,18 @@ gae.tensorboard = tensorboard
 #  HETEROGENEOUS CLUSTERING:
 #  BEST FIRST AND SECOND STEP EVER
 #-------------------------------------------------------------------
-#step 1
-manual_run(gae, max_epoch=10, init_sparsity=101, sparsity_increment=5,
+#step 1 (as we are not using Z, we do ony 1 epoch).
+manual_run(gae, max_epoch=1, init_sparsity=151, sparsity_increment=0,
            init_alpha_D=1, final_alpha_D=1,
-           init_alpha_G=1, final_alpha_G=0,
+           init_alpha_G=.1, final_alpha_G=.1,
            init_alpha_ATAC=.1, final_alpha_ATAC=.1,
            init_alpha_ACET=.1, final_alpha_ACET=.1,
            init_alpha_METH=.1, final_alpha_METH=.1,
            init_alpha_Z=0, final_alpha_Z=0,
-           init_attractive_loss_weight=0, final_attractive_loss_weight=1,
-           init_repulsive_loss_weight=1, final_repulsive_loss_weight=0,
-           max_iter=15,
-            init_wk_ATAC=1,
+           init_attractive_loss_weight=.9, final_attractive_loss_weight=.9,
+           init_repulsive_loss_weight=.1, final_repulsive_loss_weight=.1,
+           max_iter=150,
+           init_wk_ATAC=1,
            final_wk_ATAC=1,
            init_wk_ACET=0,
            final_wk_ACET=0,
