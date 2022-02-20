@@ -1464,7 +1464,7 @@ class AdaGAE():
             if self.update_graph_option:
                 self.update_graph_weights()
 
-        self.adj = self.S + (self.S_D * self.kendall_matrix * (self.alpha_D/20))
+        self.adj = self.S + (self.S_D * self.kendall_matrix * (self.alpha_D*20))
 
 
         # row-wise scaling
