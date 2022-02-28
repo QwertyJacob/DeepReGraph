@@ -596,9 +596,12 @@ def build_graph(X,ge_count,ccre_count, primitive_gene_clusters, primitive_ccre_c
 
 def data_preprocessing(link_ds, genes_to_pick, device, datapath='',
                        genomic_C = 3e5, genomic_slope = 0.4,
-                       add_self_loops_genomic=False, chr_to_filter=None):
-    ## Data preprocessing:
+                       add_self_loops_genomic=False, chr_to_filter=None, google_colab=False):
 
+    if google_colab:
+        datapath = '/content/'+datapath
+
+    ## Data preprocessing:
     link_ds, ccre_ds = load_data(link_ds, datapath, genes_to_pick, chr_to_filter=chr_to_filter)
 
     X, ge_count, ccre_count = get_hybrid_feature_matrix(link_ds, ccre_ds)
