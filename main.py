@@ -20,7 +20,7 @@ LOG_DIR = 'local_runs/'
 
 ##COPY TO NOTEBOOK FROM HERE!!!###
 
-from adagae import *
+from adaGAE import *
 import torch
 import pickle
 
