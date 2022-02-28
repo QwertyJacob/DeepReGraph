@@ -28,25 +28,31 @@ link_ds['cCRE_ID'] = link_ds['cCRE_ID'].apply(lambda x: x.strip())
 
 from adaGAE import *
 
-###########
-## HYPER-PARAMS
-###########
-
-
-plt.rcParams["figure.figsize"] = (10, 10)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-genes_to_pick = 0
-learning_rate = 5 * 10 ** -3
-init_sparsity = 100
-genomic_C = 3e5
-genomic_slope = 0.4
 
 
-X, G, ge_count, ccre_count, distance_matrices, slopes, gen_dist_score, ccre_ds, ge_class_labels, ccre_class_labels, gene_ds= \
-    data_preprocessing(link_ds, genes_to_pick,
-                       device=device, datapath=datapath, genomic_C = genomic_C, genomic_slope = genomic_slope, chr_to_filter=[12,13,14,15,16,17,18])
+adaGAE_object = initiliaze_DeepReGraph('my_new_model',
+                       device=device,
+                       link_ds=link_ds,
+                       datapath=datapath,
+                       chr_to_filter=[12,13,14,15,16,17,18])
 
 
-
+manual_run(adaGAE_object, max_epoch=1, init_sparsity=151, sparsity_increment=0,
+           init_alpha_D=1, final_alpha_D=1,
+           init_alpha_G=.1, final_alpha_G=.1,
+           init_alpha_ATAC=.1, final_alpha_ATAC=.1,
+           init_alpha_ACET=.1, final_alpha_ACET=.1,
+           init_alpha_METH=.1, final_alpha_METH=.1,
+           init_alpha_Z=0, final_alpha_Z=0,
+           init_attractive_loss_weight=.9, final_attractive_loss_weight=.9,
+           init_repulsive_loss_weight=.1, final_repulsive_loss_weight=.1,
+           max_iter=150,
+           init_wk_ATAC=1,
+           final_wk_ATAC=1,
+           init_wk_ACET=0,
+           final_wk_ACET=0,
+           init_wk_METH=0,
+           final_wk_METH=0)

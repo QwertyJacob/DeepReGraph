@@ -2,17 +2,6 @@ import pandas as pd
 import gdown
 import os
 
-def run_tensorboard_google_colab(log_dir='tensorboard_logs/'):
-    '''Tensorboard is an interactive dashboard that helps visualizing results for various runs of a ML model:
-        The following code will activate it on this Google Colab environment
-    '''
-
-
-    LOG_DIR = log_dir
-    os.makedirs(LOG_DIR, exist_ok=True)
-    get_ipython().system_raw(
-        'tensorboard --logdir {} --host 0.0.0.0 --port 6006 &'
-            .format(LOG_DIR))
 
 
 

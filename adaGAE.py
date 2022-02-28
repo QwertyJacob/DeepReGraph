@@ -12,6 +12,7 @@ import cProfile
 import pstats
 from functools import wraps
 import io
+import os
 import math
 import PIL.Image
 from torchvision.transforms import ToTensor
@@ -759,6 +760,62 @@ class AdaGAE_NN(torch.nn.Module):
         softmax = torch.nn.Softmax(dim=1)
         recons_w = softmax(-distances)
         return recons_w + 10 ** -10
+
+
+def start_tensorboad(log_dir):
+    '''Tensorboard is an interactive dashboard that helps visualizing results for various runs of a ML model:
+        The following code will activate it on this Google Colab environment
+    '''
+    os.makedirs(log_dir, exist_ok=True)
+    os.system('tensorboard --logdir {} --host 0.0.0.0 --port 6006 &'
+            .format(log_dir))
+
+
+
+
+def initiliaze_DeepReGraph(modelname,
+                           device,
+                           link_ds,
+                           datapath='',
+                           google_colab=False,
+                           init_sparsity=300,
+                           genes_to_pick=0,
+                           genomic_C = 3e5,
+                           genomic_slope = 0.4,
+                           chr_to_filter=None,
+                           log_dir='tensorboard_logs/'
+                           ):
+
+
+    plt.rcParams["figure.figsize"] = (15, 15)
+
+    X, \
+    G, \
+    ge_count, \
+    ccre_count, \
+    distance_matrices, \
+    slopes, \
+    gen_dist_score, \
+    ccre_ds, \
+    ge_class_labels, \
+    ccre_class_labels, \
+    gene_ds = \
+        data_preprocessing(link_ds, genes_to_pick,
+                           device=device,
+                           datapath=datapath,
+                           genomic_C=genomic_C,
+                           genomic_slope=genomic_slope,
+                           chr_to_filter=chr_to_filter)
+
+
+    tensorboard = SummaryWriter(log_dir + modelname)
+
+    adaGAE_object = AdaGAE(X, G, ge_count, ccre_count, distance_matrices, slopes,
+                 gen_dist_score, init_sparsity, ge_class_labels, ccre_class_labels,
+                 tensorboard, gene_ds, ccre_ds, device=device, datapath=datapath)
+
+    return adaGAE_object
+
 
 
 class AdaGAE():
