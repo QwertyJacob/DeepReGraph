@@ -285,12 +285,9 @@ def get_genomic_distance_matrix(link_ds, add_self_loops_genomic, genomic_C, geno
     return dense_A, G
 
 
-def load_data(datapath, num_of_genes=0, tight=True, chr_to_filter=None):
+def load_data(link_ds, datapath='', num_of_genes=0, chr_to_filter=None):
 
-    if tight:
-        var_log_ge_ds = pd.read_csv(datapath + 'tight_var_log_fpkm_GE_ds')
-    else:
-        var_log_ge_ds = pd.read_csv(datapath + 'var_log_fpkm_GE_ds')
+    var_log_ge_ds = pd.read_csv(datapath + 'tight_var_log_fpkm_GE_ds')
 
     X = var_log_ge_ds[['Heart_E10_5', 'Heart_E11_5', 'Heart_E12_5',
                        'Heart_E13_5', 'Heart_E14_5', 'Heart_E15_5', 'Heart_E16_5', 'Heart_P0']].values
@@ -320,11 +317,7 @@ def load_data(datapath, num_of_genes=0, tight=True, chr_to_filter=None):
                 [filtered_ccre_ds, ccre_ds[ccre_ds['cCRE_ID'].str.startswith('chr' + str(chr_number))]])
 
         ccre_ds = filtered_ccre_ds
-    ####################LINK MATRIX #####################################################
-    link_ds = pd.read_csv(datapath + '/Link_Matrix.tsv', sep='\t')
-    link_ds.columns = ['EnsembleID', 'cCRE_ID', 'Distance']
-    link_ds['EnsembleID'] = link_ds['EnsembleID'].apply(lambda x: x.strip())
-    link_ds['cCRE_ID'] = link_ds['cCRE_ID'].apply(lambda x: x.strip())
+
 
     if num_of_genes == 0:
         var_ge_list = working_genes_ds['EnsembleID'].tolist()
@@ -372,12 +365,12 @@ def build_graph(X,ge_count,ccre_count, primitive_gene_clusters, primitive_ccre_c
 
 
 
-def data_preprocessing(datapath, reports_path, primitive_ccre_ds_path, genes_to_pick, device,
+def data_preprocessing(link_ds,  reports_path, primitive_ccre_ds_path, genes_to_pick, device, datapath='',
                        genomic_C = 3e5, genomic_slope = 0.4,
                        add_self_loops_genomic=False, chr_to_filter=None):
     ## Data preprocessing:
 
-    link_ds, ccre_ds = load_data(datapath, genes_to_pick, chr_to_filter=chr_to_filter)
+    ccre_ds = load_data(link_ds, datapath, genes_to_pick, chr_to_filter=chr_to_filter)
 
     X, ge_count, ccre_count = get_hybrid_feature_matrix(link_ds, ccre_ds)
 
