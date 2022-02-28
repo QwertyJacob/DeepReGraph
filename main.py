@@ -9,9 +9,7 @@ primitive_ccre_ds_path = '/content/drive/MyDrive/RL_developmental_studies/Report
 '''
 
 # Elis computer
-datapath = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\GE_Datasets_2\\'
-reports_path = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\RL_developmental_studies\\Reports\\tight_var_data\\'
-primitive_ccre_ds_path = 'C:\\Users\\Jesus Cevallos\\odrive\\Diag Drive\\RL_developmental_studies\\Reports\\cCRE Clustering\\variable_k\\agglomerative_clust_cCRE_8.csv'
+datapath = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\GE_Datasets_PUBLIC_FOR_PAPER\\'
 
 '''
 # Personal computer
@@ -54,7 +52,7 @@ link_ds['cCRE_ID'] = link_ds['cCRE_ID'].apply(lambda x: x.strip())
 
 
 X, G, ge_count, ccre_count, distance_matrices, slopes, gen_dist_score, ccre_ds, ge_class_labels, ccre_class_labels, gene_ds= \
-    data_preprocessing(link_ds, reports_path, primitive_ccre_ds_path, genes_to_pick,
+    data_preprocessing(link_ds, genes_to_pick,
                        device=device, genomic_C = genomic_C, genomic_slope = genomic_slope, chr_to_filter=[12,13,14,15,16,17,18])
 
 

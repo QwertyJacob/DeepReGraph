@@ -119,8 +119,8 @@ def print_ccre_trends(original, min_cluster_size=20, max_cluster_size=200):
         plt.show()
 
 
-def get_primitive_ccre_clusters(ccre_ds, primitive_ccre_path):
-    ccre_agglomerative_ds = pd.read_csv(primitive_ccre_path)
+def get_primitive_ccre_clusters(ccre_ds, primitive_ccre_path=''):
+    ccre_agglomerative_ds = pd.read_csv(primitive_ccre_path+'agglomerative_clust_cCRE_8.csv')
     prim_ccre_ds = ccre_ds.set_index('cCRE_ID').join(ccre_agglomerative_ds.set_index('cCRE_ID'))[['cluster']]
 
     prim_ccre_ds.columns = ['primitive_cluster']

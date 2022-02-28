@@ -336,8 +336,8 @@ def load_data(link_ds, datapath='', num_of_genes=0, chr_to_filter=None):
     return link_ds, ccre_ds
 
 
-def get_primitive_gene_clusters(reports_path,link_ds):
-    gene_primitive_clusters_path = reports_path
+def get_primitive_gene_clusters(datapath, link_ds):
+    gene_primitive_clusters_path = datapath
     kmeans_ds = pd.read_csv(gene_primitive_clusters_path + 'kmeans_clustered_genes_4.csv')
     primitive_ge_clustered_ds = kmeans_ds.set_index('EnsembleID').drop('Unnamed: 0', axis=1)
     primitive_ge_clustered_ds.columns = ['primitive_cluster']
@@ -365,7 +365,7 @@ def build_graph(X,ge_count,ccre_count, primitive_gene_clusters, primitive_ccre_c
 
 
 
-def data_preprocessing(link_ds,  reports_path, primitive_ccre_ds_path, genes_to_pick, device, datapath='',
+def data_preprocessing(link_ds, genes_to_pick, device, datapath='',
                        genomic_C = 3e5, genomic_slope = 0.4,
                        add_self_loops_genomic=False, chr_to_filter=None):
     ## Data preprocessing:
@@ -374,9 +374,9 @@ def data_preprocessing(link_ds,  reports_path, primitive_ccre_ds_path, genes_to_
 
     X, ge_count, ccre_count = get_hybrid_feature_matrix(link_ds, ccre_ds)
 
-    primitive_gene_clusters = get_primitive_gene_clusters(reports_path, link_ds)
+    primitive_gene_clusters = get_primitive_gene_clusters(datapath, link_ds)
 
-    primitive_ccre_clusters = get_primitive_ccre_clusters(ccre_ds, primitive_ccre_ds_path)
+    primitive_ccre_clusters = get_primitive_ccre_clusters(ccre_ds, datapath)
 
     ge_class_labels = ['genes_' + str(ge_cluster_label) for ge_cluster_label in primitive_gene_clusters]
 
