@@ -786,6 +786,8 @@ def initiliaze_DeepReGraph(modelname,
                            log_dir='tensorboard_logs/'
                            ):
 
+    if google_colab:
+        datapath = '/content/'+datapath
 
     plt.rcParams["figure.figsize"] = (15, 15)
 
