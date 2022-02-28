@@ -14,8 +14,14 @@ datapath = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\GE_Datasets_PUBLIC_FO
 # Personal computer
 datapath = 'C:\\Users\\Jesus\\odrive\\Diag GDrive\\GE_Datasets_PUBLIC_FOR_PAPER\\'
 '''
-
 LOG_DIR = 'local_runs/'
+
+import pandas as pd
+
+link_ds = pd.read_csv(datapath + '/Link_Matrix.tsv', sep='\t')
+link_ds.columns = ['EnsembleID', 'cCRE_ID', 'Distance']
+link_ds['EnsembleID'] = link_ds['EnsembleID'].apply(lambda x: x.strip())
+link_ds['cCRE_ID'] = link_ds['cCRE_ID'].apply(lambda x: x.strip())
 
 
 ##COPY TO NOTEBOOK FROM HERE!!!###
@@ -36,11 +42,6 @@ learning_rate = 5 * 10 ** -3
 init_sparsity = 100
 genomic_C = 3e5
 genomic_slope = 0.4
-
-link_ds = pd.read_csv(datapath + '/Link_Matrix.tsv', sep='\t')
-link_ds.columns = ['EnsembleID', 'cCRE_ID', 'Distance']
-link_ds['EnsembleID'] = link_ds['EnsembleID'].apply(lambda x: x.strip())
-link_ds['cCRE_ID'] = link_ds['cCRE_ID'].apply(lambda x: x.strip())
 
 
 X, G, ge_count, ccre_count, distance_matrices, slopes, gen_dist_score, ccre_ds, ge_class_labels, ccre_class_labels, gene_ds= \
