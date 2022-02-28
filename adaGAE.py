@@ -5,6 +5,8 @@ available at https://ieeexplore.ieee.org/document/9606581
 Modifications were made by Jesus Cevallos to adapt to the application problem.
 '''
 import torch
+from torch.utils.tensorboard import SummaryWriter
+import pandas as pd
 import cProfile
 import pstats
 from functools import wraps
@@ -21,6 +23,7 @@ from sklearn import linear_model
 #import umap.plot
 import networkx as nx
 import matplotlib as mpl
+import matplotlib.pyplot as plt
 import colorsys
 import random
 from sklearn.metrics import confusion_matrix
