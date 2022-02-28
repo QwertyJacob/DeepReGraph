@@ -370,7 +370,7 @@ def data_preprocessing(link_ds, genes_to_pick, device, datapath='',
                        add_self_loops_genomic=False, chr_to_filter=None):
     ## Data preprocessing:
 
-    ccre_ds = load_data(link_ds, datapath, genes_to_pick, chr_to_filter=chr_to_filter)
+    link_ds, ccre_ds = load_data(link_ds, datapath, genes_to_pick, chr_to_filter=chr_to_filter)
 
     X, ge_count, ccre_count = get_hybrid_feature_matrix(link_ds, ccre_ds)
 
