@@ -6,8 +6,7 @@ def run_tensorboard_google_colab(log_dir='tensorboard_logs/'):
     '''Tensorboard is an interactive dashboard that helps visualizing results for various runs of a ML model:
         The following code will activate it on this Google Colab environment
     '''
-    # Change the current working directory
-    os.chdir('/content/DeepReGraph')
+
 
     LOG_DIR = log_dir
     os.makedirs(LOG_DIR, exist_ok=True)
