@@ -7,6 +7,7 @@ Modifications were made by Jesus Cevallos to adapt to the application problem.
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import pandas as pd
+import numpy as np
 import cProfile
 import pstats
 from functools import wraps
@@ -520,7 +521,7 @@ def load_data(link_ds, datapath='', num_of_genes=0, chr_to_filter=None):
     X = var_log_ge_ds[['Heart_E10_5', 'Heart_E11_5', 'Heart_E12_5',
                        'Heart_E13_5', 'Heart_E14_5', 'Heart_E15_5', 'Heart_E16_5', 'Heart_P0']].values
     '''
-    Peyman's mean substraction: (For each row)
+    Mean substraction: (For each row)
     '''
     X = np.stack([data_row - data_row.mean() for data_row in X])
 

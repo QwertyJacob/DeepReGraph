@@ -22,9 +22,6 @@ LOG_DIR = 'local_runs/'
 
 from adaGAE import *
 
-
-
-
 ###########
 ## HYPER-PARAMS
 ###########
