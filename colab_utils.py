@@ -16,8 +16,9 @@ def run_tensorboard_google_colab(log_dir='tensorboard_logs/'):
 
 
 
-def download_data_google_colab(dest_path='/content/DeepReGraph/'):
+def download_data_google_colab(dest_path=''):
     print('Downloading Datasets..')
+    dest_path = '/content/'+dest_path
 
     print('Downloading cCRE activity datasets...')
     gdown.download(id='11Bn5R5XcF0xGw31ghNPWrmTo65hgnwMx', output=dest_path+'cCRE_variational_mean_reduced.csv', quiet=True)
