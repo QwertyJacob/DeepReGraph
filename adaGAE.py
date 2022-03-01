@@ -30,11 +30,62 @@ import colorsys
 import random
 from sklearn.metrics import confusion_matrix
 from sklearn.decomposition import PCA
+from zipfile import ZipFile
+import shutil
+import gdown
+import pickle
 
 #######################
 # HELPER FUNCTIONS#####
 #######################
 
+def download_published_results(dest_path=''):
+
+    print('Downloading DeepReGraph Published Results..')
+
+    print('Downloading cCRE cluster extraction...')
+    gdown.download(id='1QS0c23Md83reCmzUoydk9qdKgyyPhvHQ', output=dest_path+'DeepReGraph_cCREs_extraction.csv', quiet=True)
+
+    print('Downloading Gene cluster extraction...')
+    gdown.download(id='1B-HoFKw9MXANfJQRFGJRnIX3NZspUTou', output=dest_path+'DeepReGraph_Genes_extraction.csv', quiet=True)
+
+    print('Downloading and exctracting the AdaGAE object containing a trained model')
+    gdown.download(id='1_uu5RAjXuj7I1m3FqlYQpOlTyin1cVqO', output=dest_path+'DeepReGraph_Trained_AdaGAE_Object_Backup.zip', quiet=True)
+    # uncompressing...
+    zf = ZipFile(dest_path+'DeepReGraph_Trained_AdaGAE_Object_Backup.zip', 'r')
+    zf.extract('DeepReGraph_Trained_AdaGAE_Object_Backup')
+    zf.close()
+    # moving to target path...
+    original = r'DeepReGraph_Trained_AdaGAE_Object_Backup'
+    target = dest_path+'DeepReGraph_Trained_AdaGAE_Object_Backup'
+    shutil.move(original,target)
+
+
+def load_published_results_to_empty_object(adaGAE_object, results_path=''):
+    # Restore the model using the backup object.
+    with open(results_path + 'DeepReGraph_Trained_AdaGAE_Object_Backup', 'rb') as config_dictionary_file:
+        readed_backup = pickle.load(config_dictionary_file)
+    adaGAE_object.load_state_from(readed_backup)
+
+    # Load the clustering results also:
+    heterogeneous_genes = pd.read_csv(results_path + 'DeepReGraph_Genes_extraction.csv')
+    heterogeneous_ccres = pd.read_csv(results_path + 'DeepReGraph_cCREs_extraction.csv')
+
+    heterogeneous_genes.columns = ['EnsembleID', 'cluster']
+
+    if 'cluster' in adaGAE_object.gene_ds.columns:
+        adaGAE_object.gene_ds.drop('cluster', axis=1, inplace=True)
+
+    adaGAE_object.gene_ds = adaGAE_object.gene_ds.set_index('EnsembleID').join(
+        heterogeneous_genes.set_index('EnsembleID')).reset_index()
+
+    if 'cluster' in adaGAE_object.ccre_ds.columns:
+        adaGAE_object.ccre_ds.drop('cluster', axis=1, inplace=True)
+    adaGAE_object.ccre_ds = adaGAE_object.ccre_ds.set_index('cCRE_ID').join(
+        heterogeneous_ccres.set_index('cCRE_ID')).reset_index()
+
+    adaGAE_object.current_prediction = np.array(
+        list(adaGAE_object.gene_ds['cluster']) + list(adaGAE_object.ccre_ds['cluster']))
 
 
 def print_trends(original, min_cluster_size=0, max_cluster_size=200000):
