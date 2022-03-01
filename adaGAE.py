@@ -61,11 +61,11 @@ def download_published_results(dest_path=''):
     shutil.move(original,target)
 
 
-def load_published_results_to_empty_object(adaGAE_object, results_path=''):
+def load_published_results(DeepReGrapher, results_path=''):
     # Restore the model using the backup object.
     with open(results_path + 'DeepReGraph_Trained_AdaGAE_Object_Backup', 'rb') as config_dictionary_file:
         readed_backup = pickle.load(config_dictionary_file)
-    adaGAE_object.load_state_from(readed_backup)
+    DeepReGrapher.load_state_from(readed_backup)
 
     # Load the clustering results also:
     heterogeneous_genes = pd.read_csv(results_path + 'DeepReGraph_Genes_extraction.csv')
@@ -73,19 +73,19 @@ def load_published_results_to_empty_object(adaGAE_object, results_path=''):
 
     heterogeneous_genes.columns = ['EnsembleID', 'cluster']
 
-    if 'cluster' in adaGAE_object.gene_ds.columns:
-        adaGAE_object.gene_ds.drop('cluster', axis=1, inplace=True)
+    if 'cluster' in DeepReGrapher.gene_ds.columns:
+        DeepReGrapher.gene_ds.drop('cluster', axis=1, inplace=True)
 
-    adaGAE_object.gene_ds = adaGAE_object.gene_ds.set_index('EnsembleID').join(
+    DeepReGrapher.gene_ds = DeepReGrapher.gene_ds.set_index('EnsembleID').join(
         heterogeneous_genes.set_index('EnsembleID')).reset_index()
 
-    if 'cluster' in adaGAE_object.ccre_ds.columns:
-        adaGAE_object.ccre_ds.drop('cluster', axis=1, inplace=True)
-    adaGAE_object.ccre_ds = adaGAE_object.ccre_ds.set_index('cCRE_ID').join(
+    if 'cluster' in DeepReGrapher.ccre_ds.columns:
+        DeepReGrapher.ccre_ds.drop('cluster', axis=1, inplace=True)
+    DeepReGrapher.ccre_ds = DeepReGrapher.ccre_ds.set_index('cCRE_ID').join(
         heterogeneous_ccres.set_index('cCRE_ID')).reset_index()
 
-    adaGAE_object.current_prediction = np.array(
-        list(adaGAE_object.gene_ds['cluster']) + list(adaGAE_object.ccre_ds['cluster']))
+    DeepReGrapher.current_prediction = np.array(
+        list(DeepReGrapher.gene_ds['cluster']) + list(DeepReGrapher.ccre_ds['cluster']))
 
 
 def print_gene_trends(original, min_cluster_size=0, max_cluster_size=200000, hsize=10, vsize=5):
