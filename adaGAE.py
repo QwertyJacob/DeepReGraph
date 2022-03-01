@@ -1123,7 +1123,7 @@ class AdaGAE():
 
         # generate a list of markers and another of colors
         plt.rcParams["figure.figsize"] = (20, 10)
-        for cluster in self.gene_ds['cluster'].unique():
+        for cluster in np.sort(self.gene_ds['cluster'].unique()):
             cluster_points = Z[self.current_prediction[:self.ge_count] == cluster]
             plt.scatter(cluster_points[:, 0],
                         cluster_points[:, 1],
@@ -1143,7 +1143,7 @@ class AdaGAE():
 
         fig.set_size_inches(15, 15)
 
-        for cluster in self.ccre_ds['cluster'].unique():
+        for cluster in np.sort(self.ccre_ds['cluster'].unique()):
             cluster_points = Z[self.current_prediction[self.ge_count:] == cluster]
             ax0.scatter(cluster_points[:, 0],
                         cluster_points[:, 1],
