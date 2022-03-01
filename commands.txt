@@ -14,7 +14,7 @@ gae = AdaGAE(X, G, ge_count, ccre_count, distance_matrices, slopes,
 
 
 #---------------------------------
-#----------------CAUTION!!! DO NOT OVERWRITE!!!-----------------
+#----------------BACKUP---------------
 #---------------------------------
 
 backupsito = gae.backup()
@@ -43,7 +43,6 @@ gae.tensorboard = tensorboard
 
 #-------------------------------------------------------------------
 #  HETEROGENEOUS CLUSTERING:
-#  BEST FIRST AND SECOND STEP EVER
 #-------------------------------------------------------------------
 #step 1 (as we are not using Z, we do ony 1 epoch).
 manual_run(gae, max_epoch=1, init_sparsity=151, sparsity_increment=0,
@@ -94,7 +93,6 @@ manual_run(gae, max_epoch=10, init_sparsity=152, sparsity_increment=5,
 
 #-------------------------------------------------------------------
 #  HOMOGENOUS CLUSTERING:
-#  BEST FIRST AND SECOND STEP EVER
 #-------------------------------------------------------------------
 
 gae.global_ccres_over_genes_ratio = 4

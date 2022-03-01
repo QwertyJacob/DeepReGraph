@@ -1,12 +1,4 @@
 
-'''
-
-# colab Notebook
-datapath = "/content/drive/MyDrive/GE_Datasets/"
-reports_path= '/content/drive/MyDrive/RL_developmental_studies/Reports/tight_var_data/'
-results_path=  "/content/drive/MyDrive/GE_Datasets/results/"
-primitive_ccre_ds_path = '/content/drive/MyDrive/RL_developmental_studies/Reports/cCRE Clustering/variable_k/agglomerative_clust_cCRE_8.csv'
-'''
 
 # Elis computer
 datapath = 'C:\\Users\\Jesus Cevallos\\odrive\\DIAG Drive\\GE_Datasets_PUBLIC_FOR_PAPER\\'
