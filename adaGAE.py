@@ -88,12 +88,12 @@ def load_published_results_to_empty_object(adaGAE_object, results_path=''):
         list(adaGAE_object.gene_ds['cluster']) + list(adaGAE_object.ccre_ds['cluster']))
 
 
-def print_trends(original, min_cluster_size=0, max_cluster_size=200000):
+def print_gene_trends(original, min_cluster_size=0, max_cluster_size=200000, hsize=10, vsize=5):
     clusters = original.copy()
 
     datasets = [x for _, x in clusters.groupby('cluster')]
 
-    plt.rcParams["figure.figsize"] = (10, 5)
+    plt.rcParams["figure.figsize"] = (hsize, vsize)
     colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
 
     for i, ds in enumerate(datasets):
@@ -145,12 +145,11 @@ def print_trends(original, min_cluster_size=0, max_cluster_size=200000):
             plt.show()
 
 
-def print_ccre_trends(original, min_cluster_size=20, max_cluster_size=200):
+def print_ccre_trends(original, hsize=30, vsize=5):
     clusters = original.copy()
 
     datasets = [x for _, x in clusters.groupby('cluster')]
-
-    plt.rcParams["figure.figsize"] = (30, 5)
+    plt.rcParams["figure.figsize"] = (hsize, vsize)
     colors = ['y']
 
     for i, ds in enumerate(datasets):
@@ -1188,9 +1187,8 @@ class AdaGAE():
 
 
     def print_gene_trends(self):
-
         self.gene_ds['cluster'] = self.current_prediction[:self.gene_ds.count()[0]]
-        print_trends(self.gene_ds)
+        print_gene_trends(self.gene_ds)
 
 
     def print_ccre_trends(self):
@@ -1200,11 +1198,12 @@ class AdaGAE():
         print_ccre_trends(self.ccre_ds.drop('cCRE_ID', axis=1))
 
 
-    def print_trends(self):
+    def print_trends(self, hsize=40, vsize=5):
 
         self.gene_ds['cluster'] = self.current_prediction[:self.gene_ds.count()[0]]
         self.ccre_ds['cluster'] = self.current_prediction[self.ge_count:]
 
+        plt.rcParams["figure.figsize"] = (hsize, vsize)
 
         ccre_datasets = [x for _, x in self.ccre_ds.groupby('cluster')]
         gene_datasets = [x for _, x in self.gene_ds.groupby('cluster')]
@@ -1346,8 +1345,8 @@ class AdaGAE():
                               title='Primitive to Combined cCRE clusters')
 
 
-    def plot_graph(self, polarized_weights=True, polarization_factor=100, title=''):
-
+    def plot_graph(self, polarized_weights=True, polarization_factor=100, title='',size=15):
+        plt.rcParams["figure.figsize"] = (size, size)
         graph_edges_dict = nx.get_edge_attributes(self.G, 'weight')
         pos = self.gae_nn.embedding.detach().cpu().numpy()
 
@@ -1896,8 +1895,8 @@ class AdaGAE():
         return self.cal_clustering_metric()
 
 
-    def plot_clustering(self, bi_dim_embedding=None, title=None):
-
+    def plot_clustering(self, bi_dim_embedding=None, title=None, size=15):
+        plt.rcParams["figure.figsize"] = (size, size)
         if self.layers[-1] > 2:
             if bi_dim_embedding == None:
                 bi_dim_embedding = umap.UMAP(
@@ -1972,8 +1971,8 @@ class AdaGAE():
         self.compute_P(self.gae_nn.embedding.cpu(), force_recompute_S=True)
 
 
-    def plot_classes(self, bi_dim_embedding=None, only_ccres=False, title=None):
-
+    def plot_classes(self, bi_dim_embedding=None, only_ccres=False, title=None, size=15):
+        plt.rcParams["figure.figsize"] = (size, size)
         if self.layers[-1] > 2:
             if bi_dim_embedding == None:
                 bi_dim_embedding = umap.UMAP(
