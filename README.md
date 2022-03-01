@@ -8,7 +8,7 @@ Code for the paper:
 ___
 
 Follow tbe jupyter notebook *"DeepReGraph_Usage_Example.ipynb"*.
-Notice that it can be directly opened in google colab. 
+Notice that it can be directly opened in Google Colab. 
 
 Just open this link on your browser:
 https://colab.research.google.com/github/QwertyJacob/DeepReGraph/blob/dev/DeepReGraph_Usage_Example.ipynb
