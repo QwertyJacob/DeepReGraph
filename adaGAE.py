@@ -378,7 +378,6 @@ def get_hybrid_feature_matrix(link_ds, ccre_ds):
 
 
 def get_distance_matrices(X, ge_count):
-    print('Computing euclidean distance matrices')
 
     cpu_X = X.cpu()
 
@@ -403,8 +402,6 @@ def get_distance_matrices(X, ge_count):
     atac_distances = distance(atac.t(), atac.t())
     atac_distances = torch.max(atac_distances, torch.t(atac_distances))
     atac_distances /= atac_distances.max()
-
-    print('Euclidean distance matrices computed')
 
     return ge_distances, atac_distances, acet_distances, met_distances
 
@@ -677,7 +674,6 @@ def data_preprocessing(link_ds, genes_to_pick, device, datapath='',
 
     print('Analyzing ', ge_count, ' genes and ', ccre_count, ' ccres for a total of ', ge_count + ccre_count,
           ' elements.')
-    print('cCREs over Gene ratio is ', ccre_count / ge_count)
 
     D_G, D_ATAC, D_ACET, D_MET = get_distance_matrices(X, ge_count)
 
@@ -891,7 +887,7 @@ def initialize_DeepReGraph(modelname,
 
     tensorboard = SummaryWriter(log_dir + modelname)
 
-    adaGAE_object = AdaGAE(X,
+    DeepReGrapher = AdaGAE(X,
                             G,
                             ge_count,
                             ccre_count,
@@ -934,8 +930,8 @@ def initialize_DeepReGraph(modelname,
                             update_graph_option=update_graph_option)
 
 
-
-    return adaGAE_object
+    print('Succesfully created DeepReGraph Object')
+    return DeepReGrapher
 
 
 
