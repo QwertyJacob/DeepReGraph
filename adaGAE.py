@@ -774,17 +774,42 @@ def start_tensorboad(log_dir):
 
 
 def initialize_DeepReGraph(modelname,
-                           link_ds,
-                           device = None,
-                           datapath='',
-                           google_colab=False,
-                           init_sparsity=300,
-                           genes_to_pick=0,
-                           genomic_C = 3e5,
-                           genomic_slope = 0.4,
-                           chr_to_filter=None,
-                           log_dir='tensorboard_logs/'
-                           ):
+                            link_ds,
+                            device = None,
+                            datapath='',
+                            google_colab=False,
+                            init_sparsity=300,
+                            genes_to_pick=0,
+                            genomic_C = 3e5,
+                            genomic_slope = 0.4,
+                            chr_to_filter=None,
+                            add_self_loops_genomic=False,
+                            log_dir='tensorboard_logs/',
+                            pre_trained=False,
+                            pre_trained_state_dict='',
+                            pre_computed_embedding='',
+                            global_step=0,
+                            layers=None,
+                            gcn=False,
+                            init_alpha_D=0,
+                            init_attractive_loss_weight=0.1,
+                            init_repulsive_loss_weight=1,
+                            init_lambda_repulsive=0.5,
+                            init_lambda_attractive=0.5,
+                            clusterize=True,
+                            learning_rate = 5 * 10 ** -3,
+                            init_alpha_Z=0,
+                            init_alpha_G=1,
+                            init_alpha_ATAC=1,
+                            init_alpha_ACET=1,
+                            init_alpha_METH=1,
+                            init_wk_ATAC=.5,
+                            init_wk_ACET=.1,
+                            init_wk_METH=.5,
+                            differential_sparsity=False,
+                            eval_flag=False,
+                            update_graph_option=False):
+
 
     if device is None:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -809,15 +834,56 @@ def initialize_DeepReGraph(modelname,
                            device=device,
                            datapath=datapath,
                            genomic_C=genomic_C,
+                           add_self_loops_genomic=add_self_loops_genomic,
                            genomic_slope=genomic_slope,
                            chr_to_filter=chr_to_filter)
 
 
     tensorboard = SummaryWriter(log_dir + modelname)
 
-    adaGAE_object = AdaGAE(X, G, ge_count, ccre_count, distance_matrices, slopes,
-                 gen_dist_score, init_sparsity, ge_class_labels, ccre_class_labels,
-                 tensorboard, gene_ds, ccre_ds, device=device, datapath=datapath)
+    adaGAE_object = AdaGAE(X,
+                            G,
+                            ge_count,
+                            ccre_count,
+                            distance_matrices,
+                            slopes,
+                            gen_dist_score,
+                            init_sparsity,
+                            ge_class_labels,
+                            ccre_class_labels,
+                            tensorboard,
+                            gene_ds,
+                            ccre_ds,
+                            device=device,
+                            pre_trained=pre_trained,
+                            pre_trained_state_dict=pre_trained_state_dict,
+                            pre_computed_embedding=pre_computed_embedding,
+                            global_step=global_step,
+                            layers=layers,
+                            gcn=gcn,
+                            init_genomic_slope=genomic_slope,
+                            init_genomic_C=genomic_C,
+                            init_alpha_D=init_alpha_D,
+                            init_attractive_loss_weight=init_attractive_loss_weight,
+                            init_repulsive_loss_weight=init_repulsive_loss_weight,
+                            init_lambda_repulsive=init_lambda_repulsive,
+                            init_lambda_attractive=init_lambda_attractive,
+                            clusterize=clusterize,
+                            learning_rate=learning_rate,
+                            datapath=datapath,
+                            init_alpha_Z=init_alpha_Z,
+                            init_alpha_G=init_alpha_G,
+                            init_alpha_ATAC=init_alpha_ATAC,
+                            init_alpha_ACET=init_alpha_ACET,
+                            init_alpha_METH=init_alpha_METH,
+                            init_wk_ATAC=init_wk_ATAC,
+                            init_wk_ACET=init_wk_ACET,
+                            init_wk_METH=init_wk_METH,
+                            differential_sparsity=differential_sparsity,
+                            eval_flag=eval_flag,
+                            update_graph_option=update_graph_option)
+
+
 
     return adaGAE_object
 
