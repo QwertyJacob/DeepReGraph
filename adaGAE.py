@@ -1157,7 +1157,7 @@ class AdaGAE():
 
         ax0.set_title(ax0_title)
 
-        for cluster in self.ccre_ds['cluster'].unique():
+        for cluster in np.sort(self.ccre_ds['cluster'].unique()):
             cluster_points = Z[self.current_prediction[self.ge_count:] == cluster]
             ax1.scatter(cluster_points[:, 0],
                         cluster_points[:, 2],
@@ -1170,7 +1170,7 @@ class AdaGAE():
 
         ax1.set_title(ax1_title)
 
-        for cluster in self.ccre_ds['cluster'].unique():
+        for cluster in np.sort(self.ccre_ds['cluster'].unique()):
             cluster_points = Z[self.current_prediction[self.ge_count:] == cluster]
             ax2.scatter(cluster_points[:, 1],
                         cluster_points[:, 2],
