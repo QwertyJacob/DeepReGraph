@@ -773,9 +773,9 @@ def start_tensorboad(log_dir):
 
 
 
-def initiliaze_DeepReGraph(modelname,
-                           device,
+def initialize_DeepReGraph(modelname,
                            link_ds,
+                           device = None,
                            datapath='',
                            google_colab=False,
                            init_sparsity=300,
@@ -785,6 +785,9 @@ def initiliaze_DeepReGraph(modelname,
                            chr_to_filter=None,
                            log_dir='tensorboard_logs/'
                            ):
+
+    if device is None:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     if google_colab:
         datapath = '/content/'+datapath
