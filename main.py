@@ -25,9 +25,9 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 
-adaGAE_object = initiliaze_DeepReGraph('my_new_model',
-                       device=device,
+adaGAE_object = initialize_DeepReGraph('my_new_model',
                        link_ds=link_ds,
+                        device=device,
                        datapath=datapath,
                        chr_to_filter=[12,13,14,15,16,17,18])
 

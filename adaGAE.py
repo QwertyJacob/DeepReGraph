@@ -828,7 +828,7 @@ def initialize_DeepReGraph(modelname,
                             genes_to_pick=0,
                             genomic_C = 3e5,
                             genomic_slope = 0.4,
-                            chr_to_filter=None,
+                            chr_to_filter = None,
                             add_self_loops_genomic=False,
                             log_dir='tensorboard_logs/',
                             pre_trained=False,
@@ -1341,7 +1341,7 @@ class AdaGAE():
                               title='Primitive to Combined cCRE clusters')
 
 
-    def plot_graph(self, polarized_weights=True, polarization_factor=100, title='',size=15):
+    def plot_graph(self, polarized_weights=True, polarization_factor=100, title='',size=15, legend=True):
         plt.rcParams["figure.figsize"] = (size, size)
         graph_edges_dict = nx.get_edge_attributes(self.G, 'weight')
         pos = self.gae_nn.embedding.detach().cpu().numpy()
@@ -1379,7 +1379,8 @@ class AdaGAE():
 
         ax.tick_params(left=True, bottom=True, labelleft=True, labelbottom=True)
         plt.gca()
-        plt.legend()
+        if legend:
+            plt.legend()
         if title != '':
             plt.title(title)
 
@@ -2189,7 +2190,7 @@ def manual_run(gae,
           if epoch%10==0:
             gae.plot_graph()
         else:
-          gae.plot_graph(title)
+          gae.plot_graph(title=title)
 
     print('gae.current_cluster_number', gae.current_cluster_number)
 
