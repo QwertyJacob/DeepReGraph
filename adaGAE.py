@@ -817,10 +817,19 @@ def start_tensorboad(log_dir):
             .format(log_dir))
 
 
+def get_link_matrix(data_path='preprocessed_data/Link_Matrix_Splitted/'):
+    print('Assembling link matrix...')
+    # We assemble it together:
+    link_ds_part_0 = pd.read_csv(data_path + 'Link_Matrix_piece_0.csv', index_col=0)
+    link_ds_part_1 = pd.read_csv(data_path + 'Link_Matrix_piece_1.csv', index_col=0)
+    link_ds_part_2 = pd.read_csv(data_path + 'Link_Matrix_piece_2.csv', index_col=0)
+    link_ds_part_3 = pd.read_csv(data_path + 'Link_Matrix_piece_3.csv', index_col=0)
+    link_ds_part_4 = pd.read_csv(data_path + 'Link_Matrix_piece_4.csv', index_col=0)
+    link_ds = pd.concat([link_ds_part_0, link_ds_part_1, link_ds_part_2, link_ds_part_3, link_ds_part_4])
+    return link_ds
 
 
 def initialize_DeepReGraph(modelname,
-                            link_ds,
                             device = None,
                             datapath='preprocessed_data/',
                             google_colab=False,
@@ -857,11 +866,14 @@ def initialize_DeepReGraph(modelname,
                             update_graph_option=False):
 
 
+
     if device is None:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     if google_colab:
         datapath = '/content/'+datapath
+
+    link_ds = get_link_matrix(data_path=datapath+'Link_Matrix_Splitted/')
 
     plt.rcParams["figure.figsize"] = (15, 15)
 
