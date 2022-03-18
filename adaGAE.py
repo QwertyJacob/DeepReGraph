@@ -822,7 +822,7 @@ def start_tensorboad(log_dir):
 def initialize_DeepReGraph(modelname,
                             link_ds,
                             device = None,
-                            datapath='',
+                            datapath='preprocessed_data/',
                             google_colab=False,
                             init_sparsity=300,
                             genes_to_pick=0,
