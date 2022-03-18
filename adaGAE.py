@@ -2110,7 +2110,9 @@ def manual_run(gae,
                final_wk_ACET=.1,
                init_wk_METH=.5,
                final_wk_METH=.5,
-               max_iter=15):
+               max_iter=15,
+               plot_size=15,
+               legend=True):
 
     current_sparsity = init_sparsity
     epoch=0
@@ -2190,7 +2192,7 @@ def manual_run(gae,
           if epoch%10==0:
             gae.plot_graph()
         else:
-          gae.plot_graph(title=title)
+          gae.plot_graph(title=title, size=plot_size,legend=legend)
 
     print('gae.current_cluster_number', gae.current_cluster_number)
 
