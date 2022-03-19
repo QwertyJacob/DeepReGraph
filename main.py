@@ -18,7 +18,7 @@ link_ds['cCRE_ID'] = link_ds['cCRE_ID'].apply(lambda x: x.strip())
 
 ##COPY TO NOTEBOOK FROM HERE!!!###
 
-from adaGAE import *
+from DeepReGraph import *
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

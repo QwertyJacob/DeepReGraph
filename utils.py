@@ -1,4 +1,4 @@
-from adaGAE import *
+from DeepReGraph import *
 
 # HOw to get the prmitive ccre PCA from a given gae object
 
