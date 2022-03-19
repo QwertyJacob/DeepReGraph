@@ -563,7 +563,7 @@ def get_genomic_distance_matrix(link_ds, add_self_loops_genomic, genomic_C, geno
 
 
 def load_data(link_ds, datapath='', num_of_genes=0, chr_to_filter=None):
-
+    print('Pre-processing Gene Expression Dataset...')
     var_log_ge_ds = pd.read_csv(datapath + 'tight_var_log_fpkm_GE_ds')
 
     X = var_log_ge_ds[['Heart_E10_5', 'Heart_E11_5', 'Heart_E12_5',
@@ -585,6 +585,7 @@ def load_data(link_ds, datapath='', num_of_genes=0, chr_to_filter=None):
     # else:
     #   ccre_ds = pd.read_csv(datapath + 'cCRE_variational_mean_reduced.csv')
 
+    print('Pre-processing candidate-CREs\' Actitivy Dataset...')
     ccre_ds = pd.read_csv(datapath + 'cCRE_variational_mean_reduced.csv')
 
     if chr_to_filter != None:
@@ -662,17 +663,17 @@ def data_preprocessing(link_ds, genes_to_pick, device, datapath='',
 
     ccre_class_labels = ['ccres_' + str(ccre_cluster_label) for ccre_cluster_label in primitive_ccre_clusters]
 
+    print('Initializing heterogeneous Graph with euclidean distances...')
     G = build_graph(X, ge_count,ccre_count, ge_class_labels, ccre_class_labels)
 
+    print('Computing trend-aware base-Pair distance scores...')
     gene_exp_slopes, atac_slopes, acet_slopes, met_slopes = get_slopes(X, ge_count)
 
     slopes = [gene_exp_slopes, atac_slopes, acet_slopes, met_slopes]
 
     gen_dist_score, G = get_genomic_distance_matrix(link_ds, add_self_loops_genomic, genomic_C, genomic_slope, G )
 
-
-
-    print('Analyzing ', ge_count, ' genes and ', ccre_count, ' ccres for a total of ', ge_count + ccre_count,
+    print('Using a data-set containing ', ge_count, ' genes and ', ccre_count, ' ccres for a total of ', ge_count + ccre_count,
           ' elements.')
 
     D_G, D_ATAC, D_ACET, D_MET = get_distance_matrices(X, ge_count)
