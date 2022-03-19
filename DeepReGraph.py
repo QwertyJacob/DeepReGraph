@@ -678,7 +678,7 @@ def data_preprocessing(link_ds, genes_to_pick, device, datapath='',
     print('Initializing heterogeneous Graph with euclidean distances...')
     G = build_graph(X, ge_count,ccre_count, ge_class_labels, ccre_class_labels)
 
-    print('Computing trend-aware base-Pair distance scores...')
+    print('Computing trend-aware base-pair distance scores...')
     gene_exp_slopes, atac_slopes, acet_slopes, met_slopes = get_slopes(X, ge_count)
 
     slopes = [gene_exp_slopes, atac_slopes, acet_slopes, met_slopes]
@@ -1259,6 +1259,8 @@ class AdaGAE():
                                      pd.Series(dss[0]['Heart_P0']).quantile(0.25)])
 
             for index, row in dss[0].iterrows():
+                # outlier removal
+                ax0.set_ylim(-1.5, 1.5)
                 ax0.plot(['Heart_E10_5', 'Heart_E11_5', 'Heart_E12_5', 'Heart_E13_5', 'Heart_E14_5', 'Heart_E15_5',
                           'Heart_E16_5', 'Heart_P0'],
                          row[['Heart_E10_5', 'Heart_E11_5', 'Heart_E12_5', 'Heart_E13_5', 'Heart_E14_5', 'Heart_E15_5',
@@ -1275,7 +1277,7 @@ class AdaGAE():
             ccre_first_percentile = ccre_stats.loc['25%'].values.tolist()
 
             for index, row in dss[1].iterrows():
-
+                ax1.set_ylim(-2, 2)
                 ax1.plot(['E10_5_atac', 'E11_5_atac',
                           'E12_5_atac', 'E13_5_atac', 'E14_5_atac',
                           'E15_5_atac', 'E16_5_atac', 'P0_atac'], row[['Heart_E10_5_atac', 'Heart_E11_5_atac',
@@ -1288,7 +1290,7 @@ class AdaGAE():
                                     'E12_5_atac', 'E13_5_atac', 'E14_5_atac',
                                     'E15_5_atac', 'E16_5_atac', 'P0_atac'], y1=ccre_first_percentile[16:-1],
                                  y2=ccre_third_percentile[16:-1], color='black')
-
+                ax2.set_ylim(-2, 2)
                 ax2.plot(['E10_5_acet',
                           'E11_5_acet', 'E12_5_acet', 'E13_5_acet',
                           'E14_5_acet', 'E15_5_acet', 'E16_5_acet',
@@ -1301,7 +1303,7 @@ class AdaGAE():
                                     'E14_5_acet', 'E15_5_acet', 'E16_5_acet',
                                     'P0_acet'], y1=ccre_first_percentile[8:16], y2=ccre_third_percentile[8:16],
                                  color='black')
-
+                ax3.set_ylim(-2, 2)
                 ax3.plot(['E10_5_met', 'E11_5_met', 'E12_5_met',
                           'E13_5_met', 'E14_5_met', 'E15_5_met',
                           'E16_5_met', 'P0_met'], row[['Heart_E10_5_met', 'Heart_E11_5_met', 'Heart_E12_5_met',
