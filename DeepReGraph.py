@@ -61,7 +61,19 @@ def download_published_results(dest_path=''):
     shutil.move(original,target)
 
 
-def load_published_results(DeepReGrapher, results_path=''):
+def load_published_results(DeepReGrapher, results_path='published_results/'):
+
+    print('Extracting the AdaGAE object containing a trained model...')
+
+    # uncompressing...
+    zf = ZipFile(results_path + 'DeepReGraph_Trained_AdaGAE_Object_Backup.zip', 'r')
+    zf.extract('DeepReGraph_Trained_AdaGAE_Object_Backup')
+    zf.close()
+    # moving to target path...
+    original = r'DeepReGraph_Trained_AdaGAE_Object_Backup'
+    target = results_path + 'DeepReGraph_Trained_AdaGAE_Object_Backup'
+    shutil.move(original, target)
+
     # Restore the model using the backup object.
     with open(results_path + 'DeepReGraph_Trained_AdaGAE_Object_Backup', 'rb') as config_dictionary_file:
         readed_backup = pickle.load(config_dictionary_file)
