@@ -2032,6 +2032,98 @@ def manual_run(gae,
 
 
 
+def manual_run(gae,
+               max_epoch=10,
+               init_sparsity=200,
+               sparsity_increment=40,
+               alpha_D=0,
+               alpha_G=1,
+               alpha_ATAC=1,
+               alpha_ACET=1,
+               alpha_METH=1,
+               alpha_Z=0,
+               attractive_loss_weight=0.1,
+               repulsive_loss_weight=1,
+               init_lambda_attractive=0.5,
+               final_lambda_attractive=0.5,
+               init_lambda_repulsive=0.5,
+               final_lambda_repulsive=0.5,
+               omega_ATAC=1,
+               omega_ACET=0,
+               omega_METH=0,
+               max_iter=15,
+               plot_size=15,
+               legend=True):
+
+    current_sparsity = init_sparsity
+    epoch=0
+    gae.iteration = 0
+
+    while epoch < max_epoch:
+
+        epoch += 1
+
+        T = max_epoch * max_iter
+
+        current_sparsity += sparsity_increment
+
+
+        current_lambda_attractive = gae.get_dinamic_param(init_lambda_attractive,
+                                                         final_lambda_attractive, T)
+
+        current_lambda_repulsive = gae.get_dinamic_param(init_lambda_repulsive,
+                                                        final_lambda_repulsive, T)
+
+        gae.epoch_losses = []
+
+        for i in range(max_iter):
+
+            dummy_action = torch.Tensor([current_sparsity,
+                                         alpha_D,
+                                         attractive_loss_weight,
+                                         current_lambda_attractive,
+                                         repulsive_loss_weight,
+                                         current_lambda_repulsive,
+                                         alpha_G,
+                                         alpha_ATAC,
+                                         alpha_METH,
+                                         alpha_ACET,
+                                         alpha_Z,
+                                         omega_ATAC,
+                                         omega_ACET,
+                                         omega_METH]).to(gae.device)
+
+            loss = gae.step(dummy_action)
+
+            gae.epoch_losses.append(loss.item())
+
+        # mean_loss = sum(gae.epoch_losses) / len(gae.epoch_losses)
+        # reward = gae.evaluate()
+
+        title = 'epoch: '+ str(epoch)+ \
+                ' Attr: ' + str(gae.current_attractive_loss_weight) + \
+                ' Rep: ' + str(gae.current_repulsive_loss_weight) + \
+                ' spars: ' + str(gae.current_sparsity) + \
+                ' curr_clust_num: ' + str(gae.current_cluster_number) + \
+                '\nalphaD: ' + str(gae.alpha_D) + \
+                ' alpha_G: '+ str(gae.alpha_G) + ' alpha_ATAC: ' +str(gae.alpha_ATAC) + \
+                ' alpha_ACET: ' + str(gae.alpha_ACET) + ' alpha_METH: ' + str(gae.alpha_METH) + \
+                ' alpha_Z: ' + str(gae.alpha_Z) + \
+                '\nwkATAC: ' + str(gae.wk_ATAC) + \
+                ' wkACET: ' + str(gae.wk_ACET) + \
+                ' wkMETH: ' + str(gae.wk_METH)
+        print(title)
+
+        if gae.layers[-1] > 2:
+          if epoch%10==0:
+            gae.plot_graph()
+        else:
+          gae.plot_graph(title=title, size=plot_size,legend=legend)
+
+    print('gae.current_cluster_number', gae.current_cluster_number)
+
+
+
 def adagae_run(action_index, actions_array, adagae_object, curr_sparsity):
 
   curr_action = actions_array[action_index]
