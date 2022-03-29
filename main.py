@@ -42,9 +42,6 @@ manual_run(adaGAE_object, max_epoch=1, init_sparsity=151, sparsity_increment=0,
            init_attractive_loss_weight=.9, final_attractive_loss_weight=.9,
            init_repulsive_loss_weight=.1, final_repulsive_loss_weight=.1,
            max_iter=150,
-           init_wk_ATAC=1,
-           final_wk_ATAC=1,
-           init_wk_ACET=0,
-           final_wk_ACET=0,
-           init_wk_METH=0,
-           final_wk_METH=0)
+           omega_ATAC=1,
+           omega_ACET=0,
+           omega_METH=0)

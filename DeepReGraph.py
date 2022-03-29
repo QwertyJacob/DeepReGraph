@@ -665,40 +665,40 @@ def get_link_matrix(data_path='preprocessed_data/Link_Matrix_Splitted/'):
 
 
 def initialize_DeepReGraph(modelname,
-                            device = None,
-                            datapath='preprocessed_data/',
-                            google_colab=False,
-                            init_sparsity=300,
-                            genes_to_pick=0,
-                            genomic_C = 3e5,
-                            genomic_slope = 0.4,
-                            chr_to_filter = None,
-                            add_self_loops_genomic=False,
-                            log_dir='tensorboard_logs/',
-                            pre_trained=False,
-                            pre_trained_state_dict='',
-                            pre_computed_embedding='',
-                            global_step=0,
-                            layers=None,
-                            gcn=False,
-                            init_alpha_D=0,
-                            init_attractive_loss_weight=0.1,
-                            init_repulsive_loss_weight=1,
-                            init_lambda_repulsive=0.5,
-                            init_lambda_attractive=0.5,
-                            clusterize=True,
-                            learning_rate = 5 * 10 ** -3,
-                            init_alpha_Z=0,
-                            init_alpha_G=1,
-                            init_alpha_ATAC=1,
-                            init_alpha_ACET=1,
-                            init_alpha_METH=1,
-                            init_wk_ATAC=.5,
-                            init_wk_ACET=.1,
-                            init_wk_METH=.5,
-                            differential_sparsity=False,
-                            eval_flag=False,
-                            update_graph_option=False):
+                           device = None,
+                           datapath='preprocessed_data/',
+                           google_colab=False,
+                           init_sparsity=300,
+                           genes_to_pick=0,
+                           genomic_C = 3e5,
+                           genomic_slope = 0.4,
+                           chr_to_filter = None,
+                           add_self_loops_genomic=False,
+                           log_dir='tensorboard_logs/',
+                           pre_trained=False,
+                           pre_trained_state_dict='',
+                           pre_computed_embedding='',
+                           global_step=0,
+                           layers=None,
+                           gcn=False,
+                           init_alpha_D=0,
+                           init_attractive_loss_weight=0.1,
+                           init_repulsive_loss_weight=1,
+                           init_lambda_repulsive=0.5,
+                           init_lambda_attractive=0.5,
+                           clusterize=True,
+                           learning_rate = 5 * 10 ** -3,
+                           init_alpha_Z=0,
+                           init_alpha_G=1,
+                           init_alpha_ATAC=1,
+                           init_alpha_ACET=1,
+                           init_alpha_METH=1,
+                           omega_ATAC=1,
+                           omega_ACET=0,
+                           omega_METH=0,
+                           differential_sparsity=False,
+                           eval_flag=False,
+                           update_graph_option=False):
 
 
 
@@ -735,46 +735,46 @@ def initialize_DeepReGraph(modelname,
     tensorboard = SummaryWriter(log_dir + modelname)
 
     DeepReGrapher = AdaGAE(X,
-                            G,
-                            ge_count,
-                            ccre_count,
-                            distance_matrices,
-                            slopes,
-                            gen_dist_score,
-                            init_sparsity,
-                            ge_class_labels,
-                            ccre_class_labels,
-                            tensorboard,
-                            gene_ds,
-                            ccre_ds,
-                            device=device,
-                            pre_trained=pre_trained,
-                            pre_trained_state_dict=pre_trained_state_dict,
-                            pre_computed_embedding=pre_computed_embedding,
-                            global_step=global_step,
-                            layers=layers,
-                            gcn=gcn,
-                            init_genomic_slope=genomic_slope,
-                            init_genomic_C=genomic_C,
-                            init_alpha_D=init_alpha_D,
-                            init_attractive_loss_weight=init_attractive_loss_weight,
-                            init_repulsive_loss_weight=init_repulsive_loss_weight,
-                            init_lambda_repulsive=init_lambda_repulsive,
-                            init_lambda_attractive=init_lambda_attractive,
-                            clusterize=clusterize,
-                            learning_rate=learning_rate,
-                            datapath=datapath,
-                            init_alpha_Z=init_alpha_Z,
-                            init_alpha_G=init_alpha_G,
-                            init_alpha_ATAC=init_alpha_ATAC,
-                            init_alpha_ACET=init_alpha_ACET,
-                            init_alpha_METH=init_alpha_METH,
-                            init_wk_ATAC=init_wk_ATAC,
-                            init_wk_ACET=init_wk_ACET,
-                            init_wk_METH=init_wk_METH,
-                            differential_sparsity=differential_sparsity,
-                            eval_flag=eval_flag,
-                            update_graph_option=update_graph_option)
+                           G,
+                           ge_count,
+                           ccre_count,
+                           distance_matrices,
+                           slopes,
+                           gen_dist_score,
+                           init_sparsity,
+                           ge_class_labels,
+                           ccre_class_labels,
+                           tensorboard,
+                           gene_ds,
+                           ccre_ds,
+                           device=device,
+                           pre_trained=pre_trained,
+                           pre_trained_state_dict=pre_trained_state_dict,
+                           pre_computed_embedding=pre_computed_embedding,
+                           global_step=global_step,
+                           layers=layers,
+                           gcn=gcn,
+                           init_genomic_slope=genomic_slope,
+                           init_genomic_C=genomic_C,
+                           init_alpha_D=init_alpha_D,
+                           init_attractive_loss_weight=init_attractive_loss_weight,
+                           init_repulsive_loss_weight=init_repulsive_loss_weight,
+                           init_lambda_repulsive=init_lambda_repulsive,
+                           init_lambda_attractive=init_lambda_attractive,
+                           clusterize=clusterize,
+                           learning_rate=learning_rate,
+                           datapath=datapath,
+                           init_alpha_Z=init_alpha_Z,
+                           init_alpha_G=init_alpha_G,
+                           init_alpha_ATAC=init_alpha_ATAC,
+                           init_alpha_ACET=init_alpha_ACET,
+                           init_alpha_METH=init_alpha_METH,
+                           omega_ATAC=omega_ATAC,
+                           omega_ACET=omega_ACET,
+                           omega_METH=omega_METH,
+                           differential_sparsity=differential_sparsity,
+                           eval_flag=eval_flag,
+                           update_graph_option=update_graph_option)
 
 
     print('Succesfully created DeepReGraph Object')
@@ -820,9 +820,9 @@ class AdaGAE():
                  init_alpha_ATAC=1,
                  init_alpha_ACET=1,
                  init_alpha_METH=1,
-                 init_wk_ATAC=.5,
-                 init_wk_ACET=.1,
-                 init_wk_METH=.5,
+                 omega_ATAC=.5,
+                 omega_ACET=.1,
+                 omega_METH=.5,
                  differential_sparsity=False,
                  eval_flag=False,
                  update_graph_option=False):
@@ -844,9 +844,9 @@ class AdaGAE():
         self.init_alpha_ATAC = init_alpha_ATAC
         self.init_alpha_ACET = init_alpha_ACET
         self.init_alpha_METH = init_alpha_METH
-        self.init_wk_ATAC = init_wk_ATAC
-        self.init_wk_ACET = init_wk_ACET
-        self.init_wk_METH = init_wk_METH
+        self.omega_ATAC = omega_ATAC
+        self.omega_ACET = omega_ACET
+        self.omega_METH = omega_METH
         self.S_D = gen_dist_score
         self.ge_class_labels = ge_class_labels
         self.ccre_class_labels = ccre_class_labels
@@ -913,9 +913,9 @@ class AdaGAE():
         self.alpha_ATAC = self.init_alpha_ATAC
         self.alpha_ACET = self.init_alpha_ACET
         self.alpha_METH = self.init_alpha_METH
-        self.wk_ATAC = self.prev_wk_ATAC = self.init_wk_ATAC
-        self.wk_ACET = self.prev_wk_ACET = self.init_wk_ACET
-        self.wk_METH = self.prev_wk_METH = self.init_wk_METH
+        self.wk_ATAC = self.prev_wk_ATAC = self.omega_ATAC
+        self.wk_ACET = self.prev_wk_ACET = self.omega_ACET
+        self.wk_METH = self.prev_wk_METH = self.omega_METH
         self.alpha_Z = self.init_alpha_Z
         self.current_cluster_number = math.ceil((self.ge_count + self.ccre_count) / self.current_sparsity)
         self.init_adj_matrices()
@@ -1944,12 +1944,9 @@ def manual_run(gae,
                final_lambda_attractive=0.5,
                init_lambda_repulsive=0.5,
                final_lambda_repulsive=0.5,
-               init_wk_ATAC=.5,
-               final_wk_ATAC=.5,
-               init_wk_ACET=.1,
-               final_wk_ACET=.1,
-               init_wk_METH=.5,
-               final_wk_METH=.5,
+               omega_ATAC=1,
+               omega_ACET=0,
+               omega_METH=0,
                max_iter=15,
                plot_size=15,
                legend=True):
@@ -1972,9 +1969,6 @@ def manual_run(gae,
         alpha_METH = gae.get_dinamic_param(init_alpha_METH, final_alpha_METH, T)
         alpha_ACET = gae.get_dinamic_param(init_alpha_ACET, final_alpha_ACET, T)
         alpha_Z = gae.get_dinamic_param(init_alpha_Z, final_alpha_Z, T)
-        wkATAC = gae.get_dinamic_param(init_wk_ATAC, final_wk_ATAC, T)
-        wkACET = gae.get_dinamic_param(init_wk_ACET, final_wk_ACET, T)
-        wkMETH = gae.get_dinamic_param(init_wk_METH, final_wk_METH, T)
 
         current_attractive_loss_weight = gae.get_dinamic_param(init_attractive_loss_weight,
                                                                final_attractive_loss_weight, T)
@@ -2003,9 +1997,9 @@ def manual_run(gae,
                                          alpha_METH,
                                          alpha_ACET,
                                          alpha_Z,
-                                         wkATAC,
-                                         wkACET,
-                                         wkMETH]).to(gae.device)
+                                         omega_ATAC,
+                                         omega_ACET,
+                                         omega_METH]).to(gae.device)
 
             loss = gae.step(dummy_action)
 
