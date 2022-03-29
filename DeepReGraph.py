@@ -731,12 +731,6 @@ def initialize_DeepReGraph(modelname,
                            genomic_slope=genomic_slope,
                            chr_to_filter=chr_to_filter)
 
-    os.makedirs(log_dir, exist_ok=True)
-    get_ipython().system_raw(
-        'tensorboard --logdir {} --host 0.0.0.0 --port 6006 &'
-            .format(log_dir)
-    )
-
     tensorboard = SummaryWriter(log_dir + modelname)
 
     DeepReGrapher = DeepReGraph(X,
