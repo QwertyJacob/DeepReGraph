@@ -4,6 +4,7 @@ which is an implementation of the paper "Adaptive Graph Auto-Encoder for General
 available at https://ieeexplore.ieee.org/document/9606581
 Modifications were made by Jesus Cevallos to adapt to the application problem.
 '''
+
 import torch
 from torch.utils.tensorboard import SummaryWriter
 import pandas as pd
@@ -39,180 +40,6 @@ import pickle
 # HELPER FUNCTIONS#####
 #######################
 
-def download_published_results(dest_path=''):
-
-    print('Downloading DeepReGraph Published Results..')
-
-    print('Downloading cCRE cluster extraction...')
-    gdown.download(id='1QS0c23Md83reCmzUoydk9qdKgyyPhvHQ', output=dest_path+'DeepReGraph_cCREs_extraction.csv', quiet=True)
-
-    print('Downloading Gene cluster extraction...')
-    gdown.download(id='1B-HoFKw9MXANfJQRFGJRnIX3NZspUTou', output=dest_path+'DeepReGraph_Genes_extraction.csv', quiet=True)
-
-    print('Downloading and exctracting the AdaGAE object containing a trained model')
-    gdown.download(id='1_uu5RAjXuj7I1m3FqlYQpOlTyin1cVqO', output=dest_path+'DeepReGraph_Trained_AdaGAE_Object_Backup.zip', quiet=True)
-    # uncompressing...
-    zf = ZipFile(dest_path+'DeepReGraph_Trained_AdaGAE_Object_Backup.zip', 'r')
-    zf.extract('DeepReGraph_Trained_AdaGAE_Object_Backup')
-    zf.close()
-    # moving to target path...
-    original = r'DeepReGraph_Trained_AdaGAE_Object_Backup'
-    target = dest_path+'DeepReGraph_Trained_AdaGAE_Object_Backup'
-    shutil.move(original,target)
-
-
-def load_published_results(DeepReGrapher, results_path='published_results/'):
-
-    print('Extracting the AdaGAE object containing a trained model...')
-
-    # uncompressing...
-    zf = ZipFile(results_path + 'DeepReGraph_Trained_AdaGAE_Object_Backup.zip', 'r')
-    zf.extract('DeepReGraph_Trained_AdaGAE_Object_Backup')
-    zf.close()
-    # moving to target path...
-    original = r'DeepReGraph_Trained_AdaGAE_Object_Backup'
-    target = results_path + 'DeepReGraph_Trained_AdaGAE_Object_Backup'
-    shutil.move(original, target)
-
-    # Restore the model using the backup object.
-    with open(results_path + 'DeepReGraph_Trained_AdaGAE_Object_Backup', 'rb') as config_dictionary_file:
-        readed_backup = pickle.load(config_dictionary_file)
-    DeepReGrapher.load_state_from(readed_backup)
-
-    # Load the clustering results also:
-    heterogeneous_genes = pd.read_csv(results_path + 'DeepReGraph_Genes_extraction.csv')
-    heterogeneous_ccres = pd.read_csv(results_path + 'DeepReGraph_cCREs_extraction.csv')
-
-    heterogeneous_genes.columns = ['EnsembleID', 'cluster']
-
-    if 'cluster' in DeepReGrapher.gene_ds.columns:
-        DeepReGrapher.gene_ds.drop('cluster', axis=1, inplace=True)
-
-    DeepReGrapher.gene_ds = DeepReGrapher.gene_ds.set_index('EnsembleID').join(
-        heterogeneous_genes.set_index('EnsembleID')).reset_index()
-
-    if 'cluster' in DeepReGrapher.ccre_ds.columns:
-        DeepReGrapher.ccre_ds.drop('cluster', axis=1, inplace=True)
-    DeepReGrapher.ccre_ds = DeepReGrapher.ccre_ds.set_index('cCRE_ID').join(
-        heterogeneous_ccres.set_index('cCRE_ID')).reset_index()
-
-    DeepReGrapher.current_prediction = np.array(
-        list(DeepReGrapher.gene_ds['cluster']) + list(DeepReGrapher.ccre_ds['cluster']))
-
-
-def print_gene_trends(original, min_cluster_size=0, max_cluster_size=200000, hsize=10, vsize=5):
-    clusters = original.copy()
-
-    datasets = [x for _, x in clusters.groupby('cluster')]
-
-    plt.rcParams["figure.figsize"] = (hsize, vsize)
-    colors = ['b', 'g', 'r', 'c', 'm', 'y', 'k', 'w']
-
-    for i, ds in enumerate(datasets):
-
-        if min_cluster_size <= ds.count()[0] <= max_cluster_size:
-
-            print('cluster', i, 'len', ds.count()[0])
-
-            '''
-            ds['Heart_E10_5'] = ds['Heart_E10_5'] - ds['Heart_E10_5'].mean()
-            ds['Heart_E11_5'] = ds['Heart_E11_5'] - ds['Heart_E11_5'].mean()
-            ds['Heart_E12_5'] = ds['Heart_E12_5'] - ds['Heart_E12_5'].mean()
-            ds['Heart_E13_5'] = ds['Heart_E13_5'] - ds['Heart_E13_5'].mean()
-            ds['Heart_E14_5'] = ds['Heart_E14_5'] - ds['Heart_E14_5'].mean()
-            ds['Heart_E15_5'] = ds['Heart_E15_5'] - ds['Heart_E15_5'].mean()
-            ds['Heart_E16_5'] = ds['Heart_E16_5'] - ds['Heart_E16_5'].mean()
-            ds['Heart_P0'] = ds['Heart_P0'] - ds['Heart_P0'].mean()
-            '''
-
-            sup_trend = np.array([pd.Series(ds['Heart_E10_5']).quantile(0.75),
-                                  pd.Series(ds['Heart_E11_5']).quantile(0.75),
-                                  pd.Series(ds['Heart_E12_5']).quantile(0.75),
-                                  pd.Series(ds['Heart_E13_5']).quantile(0.75),
-                                  pd.Series(ds['Heart_E14_5']).quantile(0.75),
-                                  pd.Series(ds['Heart_E15_5']).quantile(0.75),
-                                  pd.Series(ds['Heart_E16_5']).quantile(0.75),
-                                  pd.Series(ds['Heart_P0']).quantile(0.75)])
-            inf_trend = np.array([pd.Series(ds['Heart_E10_5']).quantile(0.25),
-                                  pd.Series(ds['Heart_E11_5']).quantile(0.25),
-                                  pd.Series(ds['Heart_E12_5']).quantile(0.25),
-                                  pd.Series(ds['Heart_E13_5']).quantile(0.25),
-                                  pd.Series(ds['Heart_E14_5']).quantile(0.25),
-                                  pd.Series(ds['Heart_E15_5']).quantile(0.25),
-                                  pd.Series(ds['Heart_E16_5']).quantile(0.25),
-                                  pd.Series(ds['Heart_P0']).quantile(0.25)])
-
-            for index, row in ds.iterrows():
-                plt.plot(['Heart_E10_5', 'Heart_E11_5', 'Heart_E12_5', 'Heart_E13_5', 'Heart_E14_5', 'Heart_E15_5',
-                          'Heart_E16_5', 'Heart_P0'],
-                         row[['Heart_E10_5', 'Heart_E11_5', 'Heart_E12_5', 'Heart_E13_5', 'Heart_E14_5', 'Heart_E15_5',
-                              'Heart_E16_5', 'Heart_P0']],
-                         label=row[['EnsembleID']], color=colors[row['cluster'] % len(colors)], marker='o', alpha=0.1)
-
-            plt.fill_between(
-                x=['Heart_E10_5', 'Heart_E11_5', 'Heart_E12_5', 'Heart_E13_5', 'Heart_E14_5', 'Heart_E15_5',
-                   'Heart_E16_5', 'Heart_P0'], y1=inf_trend, y2=sup_trend)
-
-            plt.ylim((-2.5, 2.5))
-            plt.show()
-
-
-def print_ccre_trends(original, hsize=30, vsize=5):
-    clusters = original.copy()
-
-    datasets = [x for _, x in clusters.groupby('cluster')]
-    plt.rcParams["figure.figsize"] = (hsize, vsize)
-    colors = ['y']
-
-    for i, ds in enumerate(datasets):
-
-        fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
-        fig.suptitle('cluster ' + str(ds['cluster'].iloc[0]) + ' len ' + str(ds.count()[0]))
-        stats = ds.describe()
-
-        third_percentile = stats.loc['75%'].values.tolist()
-        first_percentile = stats.loc['25%'].values.tolist()
-        for index, row in ds.iterrows():
-            clr_index = int(row['cluster'] % len(colors))
-
-            ax1.plot(['E10_5_atac', 'E11_5_atac',
-                      'E12_5_atac', 'E13_5_atac', 'E14_5_atac',
-                      'E15_5_atac', 'E16_5_atac', 'P0_atac'], row[['Heart_E10_5_atac', 'Heart_E11_5_atac',
-                                                                   'Heart_E12_5_atac', 'Heart_E13_5_atac',
-                                                                   'Heart_E14_5_atac',
-                                                                   'Heart_E15_5_atac', 'Heart_E16_5_atac',
-                                                                   'Heart_P0_atac']], color=colors[clr_index],
-                     marker='o', alpha=0.1)
-            ax1.fill_between(x=['E10_5_atac', 'E11_5_atac',
-                                'E12_5_atac', 'E13_5_atac', 'E14_5_atac',
-                                'E15_5_atac', 'E16_5_atac', 'P0_atac'], y1=first_percentile[16:-2],
-                             y2=third_percentile[16:-2], color='black')
-
-            ax2.plot(['E10_5_acet',
-                      'E11_5_acet', 'E12_5_acet', 'E13_5_acet',
-                      'E14_5_acet', 'E15_5_acet', 'E16_5_acet',
-                      'P0_acet'], row[['Heart_E10_5_acet',
-                                       'Heart_E11_5_acet', 'Heart_E12_5_acet', 'Heart_E13_5_acet',
-                                       'Heart_E14_5_acet', 'Heart_E15_5_acet', 'Heart_E16_5_acet',
-                                       'Heart_P0_acet']], color=colors[clr_index], marker='o', alpha=0.1)
-            ax2.fill_between(x=['E10_5_acet',
-                                'E11_5_acet', 'E12_5_acet', 'E13_5_acet',
-                                'E14_5_acet', 'E15_5_acet', 'E16_5_acet',
-                                'P0_acet'], y1=first_percentile[8:16], y2=third_percentile[8:16], color='black')
-
-            ax3.plot(['E10_5_met', 'E11_5_met', 'E12_5_met',
-                      'E13_5_met', 'E14_5_met', 'E15_5_met',
-                      'E16_5_met', 'P0_met'], row[['Heart_E10_5_met', 'Heart_E11_5_met', 'Heart_E12_5_met',
-                                                   'Heart_E13_5_met', 'Heart_E14_5_met', 'Heart_E15_5_met',
-                                                   'Heart_E16_5_met', 'Heart_P0_met']], color=colors[clr_index],
-                     marker='o', alpha=0.1)
-            ax3.fill_between(x=['E10_5_met', 'E11_5_met', 'E12_5_met',
-                                'E13_5_met', 'E14_5_met', 'E15_5_met',
-                                'E16_5_met', 'P0_met'], y1=first_percentile[0:8], y2=third_percentile[0:8],
-                             color='black')
-
-        plt.show()
-
 
 def get_primitive_ccre_clusters(ccre_ds, primitive_ccre_path=''):
     ccre_agglomerative_ds = pd.read_csv(primitive_ccre_path+'agglomerative_clust_cCRE_8.csv')
@@ -220,7 +47,6 @@ def get_primitive_ccre_clusters(ccre_ds, primitive_ccre_path=''):
 
     prim_ccre_ds.columns = ['primitive_cluster']
     return np.array(prim_ccre_ds.primitive_cluster.to_list())
-
 
 def make_confusion_matrix(cf,
                           group_names=None,
@@ -319,8 +145,6 @@ def make_confusion_matrix(cf,
 
     if title:
         plt.title(title)
-
-
 
 
 def profile(output_file=None, sort_by='cumulative', lines_to_print=None, strip_dirs=False):
@@ -535,8 +359,7 @@ def get_weight_initial(shape):
 
 def fast_genomic_distance_to_similarity(link_matrix, c, d):
     '''
-    see https://www.desmos.com/calculator/bmxxh8sqra
-    TODO play aroun'
+    The parametric function can be found at https://www.desmos.com/calculator/bmxxh8sqra
     '''
     return 1 / (((link_matrix / c) ** (10 * d)) + 1)
 
@@ -635,7 +458,6 @@ def get_primitive_gene_clusters(datapath, link_ds):
     prim_gene_ds = gene_ds.join(primitive_ge_clustered_ds)['primitive_cluster'].reset_index()
 
     return np.array(prim_gene_ds.primitive_cluster.to_list())
-
 
 
 def build_graph(X,ge_count,ccre_count, primitive_gene_clusters, primitive_ccre_clusters):
@@ -1207,16 +1029,7 @@ class AdaGAE():
                 pca.singular_values_[1]) + ', ' + str(pca.singular_values_[2]) + ']')
 
 
-    def print_gene_trends(self):
-        self.gene_ds['cluster'] = self.current_prediction[:self.gene_ds.count()[0]]
-        print_gene_trends(self.gene_ds)
 
-
-    def print_ccre_trends(self):
-
-        self.ccre_ds['cluster'] = self.current_prediction[self.ge_count:]
-        self.ccre_ds['silhouette_va'] = 1
-        print_ccre_trends(self.ccre_ds.drop('cCRE_ID', axis=1))
 
 
     def print_trends(self, hsize=40, vsize=5):
