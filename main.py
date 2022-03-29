@@ -32,8 +32,8 @@ adaGAE_object = initialize_DeepReGraph('my_new_model',
                        chr_to_filter=[12,13,14,15,16,17,18])
 
 
-manual_run(adaGAE_object, max_epoch=1, init_sparsity=151, sparsity_increment=0,
-           init_alpha_D=1, final_alpha_D=1,
+manual_run(adaGAE_object, L=1, init_sparsity=151, sparsity_increment=0,
+           init_omega_BP=1, final_omega_BP=1,
            init_alpha_G=.1, final_alpha_G=.1,
            init_alpha_ATAC=.1, final_alpha_ATAC=.1,
            init_alpha_ACET=.1, final_alpha_ACET=.1,

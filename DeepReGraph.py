@@ -542,7 +542,7 @@ def get_disctinct_colors(n):
 
 
 #####
-# ADAGAE OBJECT
+# DEEPREGRAPH OBJECT
 ########
 
 SPARSITY_LABEL: str = 'Sparsity'
@@ -584,7 +584,7 @@ LAMBDA_ATTRACTIVE_LABEL: str = 'Lambda Attractive'
 LAMBDA_RQ_LABEL: str = 'Lambda RQ'
 
 
-class AdaGAE_NN(torch.nn.Module):
+class GAE_NN(torch.nn.Module):
 
     def __init__(self,
                  data_matrix,
@@ -597,7 +597,7 @@ class AdaGAE_NN(torch.nn.Module):
                  learning_rate,
                  datapath
                  ):
-        super(AdaGAE_NN, self).__init__()
+        super(GAE_NN, self).__init__()
         self.device = device
         self.embedding_dim = layers[-1]
         self.embedding = None
@@ -681,7 +681,7 @@ def initialize_DeepReGraph(modelname,
                            global_step=0,
                            layers=None,
                            gcn=False,
-                           init_alpha_D=0,
+                           init_omega_BP=0,
                            init_attractive_loss_weight=0.1,
                            init_repulsive_loss_weight=1,
                            init_lambda_repulsive=0.5,
@@ -734,47 +734,47 @@ def initialize_DeepReGraph(modelname,
 
     tensorboard = SummaryWriter(log_dir + modelname)
 
-    DeepReGrapher = AdaGAE(X,
-                           G,
-                           ge_count,
-                           ccre_count,
-                           distance_matrices,
-                           slopes,
-                           gen_dist_score,
-                           init_sparsity,
-                           ge_class_labels,
-                           ccre_class_labels,
-                           tensorboard,
-                           gene_ds,
-                           ccre_ds,
-                           device=device,
-                           pre_trained=pre_trained,
-                           pre_trained_state_dict=pre_trained_state_dict,
-                           pre_computed_embedding=pre_computed_embedding,
-                           global_step=global_step,
-                           layers=layers,
-                           gcn=gcn,
-                           init_genomic_slope=genomic_slope,
-                           init_genomic_C=genomic_C,
-                           init_alpha_D=init_alpha_D,
-                           init_attractive_loss_weight=init_attractive_loss_weight,
-                           init_repulsive_loss_weight=init_repulsive_loss_weight,
-                           init_lambda_repulsive=init_lambda_repulsive,
-                           init_lambda_attractive=init_lambda_attractive,
-                           clusterize=clusterize,
-                           learning_rate=learning_rate,
-                           datapath=datapath,
-                           init_alpha_Z=init_alpha_Z,
-                           init_alpha_G=init_alpha_G,
-                           init_alpha_ATAC=init_alpha_ATAC,
-                           init_alpha_ACET=init_alpha_ACET,
-                           init_alpha_METH=init_alpha_METH,
-                           omega_ATAC=omega_ATAC,
-                           omega_ACET=omega_ACET,
-                           omega_METH=omega_METH,
-                           differential_sparsity=differential_sparsity,
-                           eval_flag=eval_flag,
-                           update_graph_option=update_graph_option)
+    DeepReGrapher = DeepReGraph(X,
+                                G,
+                                ge_count,
+                                ccre_count,
+                                distance_matrices,
+                                slopes,
+                                gen_dist_score,
+                                init_sparsity,
+                                ge_class_labels,
+                                ccre_class_labels,
+                                tensorboard,
+                                gene_ds,
+                                ccre_ds,
+                                device=device,
+                                pre_trained=pre_trained,
+                                pre_trained_state_dict=pre_trained_state_dict,
+                                pre_computed_embedding=pre_computed_embedding,
+                                global_step=global_step,
+                                layers=layers,
+                                gcn=gcn,
+                                init_genomic_slope=genomic_slope,
+                                init_genomic_C=genomic_C,
+                                init_omega_BP=init_omega_BP,
+                                init_attractive_loss_weight=init_attractive_loss_weight,
+                                init_repulsive_loss_weight=init_repulsive_loss_weight,
+                                init_lambda_repulsive=init_lambda_repulsive,
+                                init_lambda_attractive=init_lambda_attractive,
+                                clusterize=clusterize,
+                                learning_rate=learning_rate,
+                                datapath=datapath,
+                                init_alpha_Z=init_alpha_Z,
+                                init_alpha_G=init_alpha_G,
+                                init_alpha_ATAC=init_alpha_ATAC,
+                                init_alpha_ACET=init_alpha_ACET,
+                                init_alpha_METH=init_alpha_METH,
+                                omega_ATAC=omega_ATAC,
+                                omega_ACET=omega_ACET,
+                                omega_METH=omega_METH,
+                                differential_sparsity=differential_sparsity,
+                                eval_flag=eval_flag,
+                                update_graph_option=update_graph_option)
 
 
     print('Succesfully created DeepReGraph Object')
@@ -782,7 +782,7 @@ def initialize_DeepReGraph(modelname,
 
 
 
-class AdaGAE():
+class DeepReGraph():
 
     def __init__(self,
                  X,
@@ -800,14 +800,14 @@ class AdaGAE():
                  ccre_ds,
                  device=None,
                  pre_trained=False,
-                 pre_trained_state_dict='models/combined_adagae_z12_initk150_150epochs',
-                 pre_computed_embedding='models/combined_adagae_z12_initk150_150epochs_embedding',
+                 pre_trained_state_dict='',
+                 pre_computed_embedding='',
                  global_step=0,
                  layers=None,
                  gcn=False,
                  init_genomic_slope=0.4,
                  init_genomic_C=3e5,
-                 init_alpha_D=0,
+                 init_omega_BP=0,
                  init_attractive_loss_weight=0.1,
                  init_repulsive_loss_weight=1,
                  init_lambda_repulsive=0.5,
@@ -827,7 +827,7 @@ class AdaGAE():
                  eval_flag=False,
                  update_graph_option=False):
 
-        super(AdaGAE, self).__init__()
+        super(DeepReGraph, self).__init__()
 
         self.ge_count = ge_count
         self.ccre_count = ccre_count
@@ -866,7 +866,7 @@ class AdaGAE():
         self.gcn = gcn
         self.init_genomic_slope =init_genomic_slope
         self.init_genomic_C = init_genomic_C
-        self.init_alpha_D = init_alpha_D
+        self.init_omega_BP = init_omega_BP
         self.init_attractive_loss_weight = init_attractive_loss_weight
         self.init_repulsive_loss_weight = init_repulsive_loss_weight
         self.init_lambda_repulsive = init_lambda_repulsive
@@ -893,22 +893,22 @@ class AdaGAE():
         self.gae_nn = None
         torch.cuda.empty_cache()
         data_matrix_for_nn = torch.eye(self.X.shape[0],self.X.shape[0]).to(self.device)
-        self.gae_nn = AdaGAE_NN(data_matrix_for_nn,
-                                self.device,
-                                self.pre_trained,
-                                self.pre_trained_state_dict,
-                                self.pre_computed_embedding,
-                                self.gcn,
-                                self.layers,
-                                self.learning_rate,
-                                self.datapath).to(self.device)
+        self.gae_nn = GAE_NN(data_matrix_for_nn,
+                             self.device,
+                             self.pre_trained,
+                             self.pre_trained_state_dict,
+                             self.pre_computed_embedding,
+                             self.gcn,
+                             self.layers,
+                             self.learning_rate,
+                             self.datapath).to(self.device)
         self.current_prediction = None
         self.current_sparsity = self.prev_sparsity = self.init_sparsity
         self.current_gene_sparsity = math.ceil(self.current_sparsity / self.global_ccres_over_genes_ratio)
         if self.current_gene_sparsity == 0: self.current_gene_sparsity += 1
         self.current_genomic_slope = self.init_genomic_slope
         self.current_genomic_C = self.init_genomic_C
-        self.alpha_D = self.init_alpha_D
+        self.omega_BP = self.init_omega_BP
         self.alpha_G = self.init_alpha_G
         self.alpha_ATAC = self.init_alpha_ATAC
         self.alpha_ACET = self.init_alpha_ACET
@@ -1027,9 +1027,6 @@ class AdaGAE():
             'cCRE PCA 1 and 2: Explained Variance Ratio: [' + str(pca.explained_variance_ratio_[1]) + ',' + str(
                 pca.explained_variance_ratio_[2]) + ']. \n   Singluar Values: [' + str(
                 pca.singular_values_[1]) + ', ' + str(pca.singular_values_[2]) + ']')
-
-
-
 
 
     def print_trends(self, hsize=40, vsize=5):
@@ -1470,8 +1467,8 @@ class AdaGAE():
         self.tensorboard.add_scalar(SPARSITY_LABEL, self.current_sparsity, self.global_step)
         self.tensorboard.add_scalar(GENE_SPARSITY_LABEL, self.current_gene_sparsity, self.global_step)
 
-        self.alpha_D = action[1]
-        self.tensorboard.add_scalar(ALPHA_D, float(self.alpha_D),
+        self.omega_BP = action[1]
+        self.tensorboard.add_scalar(ALPHA_D, float(self.omega_BP),
                                     self.global_step)
 
         self.current_attractive_loss_weight = action[2]
@@ -1693,7 +1690,7 @@ class AdaGAE():
 
             D = (temp_D_SYMM + temp_D_Z ) / 2
 
-            self.S = self.CAN_precomputed_dist(D)
+            self.P = self.CAN_precomputed_dist(D)
 
         if first_time or self.prev_wk_ACET != self.wk_ACET \
             or self.prev_wk_ATAC != self.wk_ATAC \
@@ -1704,7 +1701,7 @@ class AdaGAE():
             if self.update_graph_option:
                 self.update_graph_weights()
 
-        self.adj = self.S + (self.S_D * self.kendall_matrix * (self.alpha_D*20))
+        self.adj = self.P + (self.S_D * self.kendall_matrix * (self.omega_BP * 20))
 
 
         # row-wise scaling
@@ -1768,7 +1765,7 @@ class AdaGAE():
         
         backup_bundle['embedding'] = self.gae_nn.embedding.detach().cpu()
         backup_bundle['state_dict'] = self.gae_nn.state_dict()
-        backup_bundle['alpha_D'] = self.alpha_D
+        backup_bundle['alpha_D'] = self.omega_BP
         backup_bundle['alpha_G'] = self.alpha_G
         backup_bundle['alpha_ATAC'] = self.alpha_ATAC
         backup_bundle['alpha_ACET'] = self.alpha_ACET
@@ -1790,7 +1787,7 @@ class AdaGAE():
 
         self.gae_nn.embedding = backup_bundle['embedding']
         self.gae_nn.load_state_dict(backup_bundle['state_dict'])
-        self.alpha_D = backup_bundle['alpha_D']
+        self.omega_BP = backup_bundle['alpha_D']
         self.alpha_G = backup_bundle['alpha_G']
         self.alpha_ATAC = backup_bundle['alpha_ATAC']
         self.alpha_METH = backup_bundle['alpha_METH']
@@ -1919,13 +1916,13 @@ def save(gae, epoch, datapath, modelname):
     torch.save(gae.gae_nn.embedding, datapath + 'models' + modelname + '_embedding_' + str(epoch) + '_epochs')
 
 
-@profile(output_file='profiling_adagae')
-def manual_run(gae,
-               max_epoch=10,
+@profile(output_file='profiling_DEEPREGRAPH')
+def manual_run(deep_re_graph_object,
+               L=10,
                init_sparsity=200,
                sparsity_increment=40,
-               init_alpha_D=0,
-               final_alpha_D=1,
+               init_omega_BP=0,
+               final_omega_BP=1,
                init_alpha_G=1,
                final_alpha_G=0,
                init_alpha_ATAC=1,
@@ -1940,10 +1937,6 @@ def manual_run(gae,
                final_attractive_loss_weight=1,
                init_repulsive_loss_weight=1,
                final_repulsive_loss_weight=0.1,
-               init_lambda_attractive=0.5,
-               final_lambda_attractive=0.5,
-               init_lambda_repulsive=0.5,
-               final_lambda_repulsive=0.5,
                omega_ATAC=1,
                omega_ACET=0,
                omega_METH=0,
@@ -1951,43 +1944,76 @@ def manual_run(gae,
                plot_size=15,
                legend=True):
 
+    '''
+    Performs the itreative optimization of the embedding matrix.
+
+    This method varies the parameter configuration from iteration to iteration.
+    Initial and final values are given for each parameter, and a progressive path from the initial value to the
+    final value is made through the iterations.
+
+    :param deep_re_graph_object: The DeepReGraph object that is going to drive the optimization.
+    :param L:  The number of optimization iterations to perform. Default value: 10.
+    :param init_sparsity:   The initial value of the sparsity parameter. Default value: 200.
+    :param sparsity_increment:  The iteration-wise increment of the sparsity parameter. Default value: 40.
+    :param init_omega_BP: init value for the parametric importance weight of the base-pair proximity information according to equation (14) in the paper. Default value: 0.
+    :param final_omega_BP: final value for init_omega_BP. Default value 1.
+    :param init_alpha_G: init value for the importance weight of the gene-expression feature space distances according to equation (11) in the paper. Default value: 1.
+    :param final_alpha_G: final value for init_alpha_G. Default value 0.
+    :param init_alpha_ATAC: init value for the importance weight of the ATAC feature space distances according to equation (11) in the paper. Default value: 1.
+    :param final_alpha_ATAC: final value for init_alpha_ATAC. Default value 0.
+    :param init_alpha_ACET: the importance weight of the H3K27-AC feature space distances according to equation (11) in the paper. Default value: 1.
+    :param final_alpha_ACET: final value for init_alpha_ACET. Default value 0.
+    :param init_alpha_METH: the importance weight of the H3K27ME3 feature space distances according to equation (11) in the paper. Default value: 1.
+    :param final_alpha_METH: final value for init_alpha_METH. Default value 0.
+    :param init_alpha_Z: init value for the importance weight of the previous-iteration embedding distances according to equation (13) in the paper. Default value: 0.
+    :param final_alpha_Z: final value for init_alpha_Z. Default value 1.
+    :param init_attractive_loss_weight: importance weight for the attractive term in the loss function, psi_A in equation (15). Default value: 0.1
+    :param final_attractive_loss_weight: final value for init_attractive_loss_weight. Default value 1.
+    :param init_repulsive_loss_weight: importance weight for the repulsive term in the loss function, psi_B in equation (15). Default value: 1
+    :param final_repulsive_loss_weight: final value for init_repulsive_loss_weight. Default value 0.1.
+    :param omega_ATAC: importance weight for the ATAC slopes in the trend-aware score according to equation (2). Default value: 1
+    :param omega_ACET: importance weight for the ACET slopes in the trend-aware score according to equation (2). Default value: 0
+    :param omega_METH: importance weight for the METH slopes in the trend-aware score according to equation (2). Default value: 0
+    :param max_iter: Maximun number of gradient descent iterations for each optimization operation. . Default value: 15.
+    :param plot_size: Predefined plot size for the embedding plot at each iteration. Default value: 15
+    :param legend: Specifies if plots should include the legend with the parameter configuation. . Default value: True.
+
+    '''
+
     current_sparsity = init_sparsity
     epoch=0
-    gae.iteration = 0
+    deep_re_graph_object.iteration = 0
 
-    while epoch < max_epoch:
+    while epoch < L:
 
         epoch += 1
 
-        T = max_epoch * max_iter
+        T = L * max_iter
 
         current_sparsity += sparsity_increment
 
-        alpha_D = gae.get_dinamic_param(init_alpha_D, final_alpha_D, T)
-        alpha_G = gae.get_dinamic_param(init_alpha_G, final_alpha_G, T)
-        alpha_ATAC = gae.get_dinamic_param(init_alpha_ATAC, final_alpha_ATAC, T)
-        alpha_METH = gae.get_dinamic_param(init_alpha_METH, final_alpha_METH, T)
-        alpha_ACET = gae.get_dinamic_param(init_alpha_ACET, final_alpha_ACET, T)
-        alpha_Z = gae.get_dinamic_param(init_alpha_Z, final_alpha_Z, T)
+        omega_BP = deep_re_graph_object.get_dinamic_param(init_omega_BP, final_omega_BP, T)
+        alpha_G = deep_re_graph_object.get_dinamic_param(init_alpha_G, final_alpha_G, T)
+        alpha_ATAC = deep_re_graph_object.get_dinamic_param(init_alpha_ATAC, final_alpha_ATAC, T)
+        alpha_METH = deep_re_graph_object.get_dinamic_param(init_alpha_METH, final_alpha_METH, T)
+        alpha_ACET = deep_re_graph_object.get_dinamic_param(init_alpha_ACET, final_alpha_ACET, T)
+        alpha_Z = deep_re_graph_object.get_dinamic_param(init_alpha_Z, final_alpha_Z, T)
 
-        current_attractive_loss_weight = gae.get_dinamic_param(init_attractive_loss_weight,
-                                                               final_attractive_loss_weight, T)
+        current_attractive_loss_weight = deep_re_graph_object.get_dinamic_param(init_attractive_loss_weight,
+                                                                                final_attractive_loss_weight, T)
 
-        current_repulsive_loss_weight = gae.get_dinamic_param(init_repulsive_loss_weight,
-                                                               final_repulsive_loss_weight, T)
+        current_repulsive_loss_weight = deep_re_graph_object.get_dinamic_param(init_repulsive_loss_weight,
+                                                                               final_repulsive_loss_weight, T)
 
-        current_lambda_attractive = gae.get_dinamic_param(init_lambda_attractive,
-                                                         final_lambda_attractive, T)
+        current_lambda_attractive = 0.5
+        current_lambda_repulsive = 0.5
 
-        current_lambda_repulsive = gae.get_dinamic_param(init_lambda_repulsive,
-                                                        final_lambda_repulsive, T)
-
-        gae.epoch_losses = []
+        deep_re_graph_object.epoch_losses = []
 
         for i in range(max_iter):
 
             dummy_action = torch.Tensor([current_sparsity,
-                                         alpha_D,
+                                         omega_BP,
                                          current_attractive_loss_weight,
                                          current_lambda_attractive,
                                          current_repulsive_loss_weight,
@@ -1999,44 +2025,44 @@ def manual_run(gae,
                                          alpha_Z,
                                          omega_ATAC,
                                          omega_ACET,
-                                         omega_METH]).to(gae.device)
+                                         omega_METH]).to(deep_re_graph_object.device)
 
-            loss = gae.step(dummy_action)
+            loss = deep_re_graph_object.step(dummy_action)
 
-            gae.epoch_losses.append(loss.item())
+            deep_re_graph_object.epoch_losses.append(loss.item())
 
         # mean_loss = sum(gae.epoch_losses) / len(gae.epoch_losses)
         # reward = gae.evaluate()
 
-        title = 'epoch: '+ str(epoch)+ \
-                ' Attr: ' + str(gae.current_attractive_loss_weight) + \
-                ' Rep: ' + str(gae.current_repulsive_loss_weight) + \
-                ' spars: ' + str(gae.current_sparsity) + \
-                ' curr_clust_num: ' + str(gae.current_cluster_number) + \
-                '\nalphaD: ' + str(gae.alpha_D) + \
-                ' alpha_G: '+ str(gae.alpha_G) + ' alpha_ATAC: ' +str(gae.alpha_ATAC) + \
-                ' alpha_ACET: ' + str(gae.alpha_ACET) + ' alpha_METH: ' + str(gae.alpha_METH) + \
-                ' alpha_Z: ' + str(gae.alpha_Z) + \
-                '\nwkATAC: ' + str(gae.wk_ATAC) + \
-                ' wkACET: ' + str(gae.wk_ACET) + \
-                ' wkMETH: ' + str(gae.wk_METH)
+        title = 'epoch: ' + str(epoch) + \
+                ' Attractive: ' + str(deep_re_graph_object.current_attractive_loss_weight) + \
+                ' Repulsive: ' + str(deep_re_graph_object.current_repulsive_loss_weight) + \
+                ' Sparsity: ' + str(deep_re_graph_object.current_sparsity) + \
+                ' curr_clust_num: ' + str(deep_re_graph_object.current_cluster_number) + \
+                '\nomega_BP: ' + str(deep_re_graph_object.omega_BP) + \
+                ' alpha_G: ' + str(deep_re_graph_object.alpha_G) + ' alpha_ATAC: ' + str(deep_re_graph_object.alpha_ATAC) + \
+                ' alpha_ACET: ' + str(deep_re_graph_object.alpha_ACET) + ' alpha_METH: ' + str(deep_re_graph_object.alpha_METH) + \
+                ' alpha_Z: ' + str(deep_re_graph_object.alpha_Z) + \
+                '\nomega_ATAC: ' + str(deep_re_graph_object.wk_ATAC) + \
+                ' omega_ACET: ' + str(deep_re_graph_object.wk_ACET) + \
+                ' omega_METH: ' + str(deep_re_graph_object.wk_METH)
         print(title)
 
-        if gae.layers[-1] > 2:
+        if deep_re_graph_object.layers[-1] > 2:
           if epoch%10==0:
-            gae.plot_graph()
+            deep_re_graph_object.plot_graph()
         else:
-          gae.plot_graph(title=title, size=plot_size,legend=legend)
+          deep_re_graph_object.plot_graph(title=title, size=plot_size, legend=legend)
 
-    print('gae.current_cluster_number', gae.current_cluster_number)
+    print('automatic cluster number suggestion', deep_re_graph_object.current_cluster_number)
 
 
 
-def manual_run(gae,
-               max_epoch=10,
+def manual_run(deep_re_graph_object,
+               L=10,
                init_sparsity=200,
                sparsity_increment=40,
-               alpha_D=0,
+               omega_BP=0,
                alpha_G=1,
                alpha_ATAC=1,
                alpha_ACET=1,
@@ -2044,42 +2070,58 @@ def manual_run(gae,
                alpha_Z=0,
                attractive_loss_weight=0.1,
                repulsive_loss_weight=1,
-               init_lambda_attractive=0.5,
-               final_lambda_attractive=0.5,
-               init_lambda_repulsive=0.5,
-               final_lambda_repulsive=0.5,
                omega_ATAC=1,
                omega_ACET=0,
                omega_METH=0,
                max_iter=15,
                plot_size=15,
                legend=True):
+    '''
+    Performs the itreative optimization of the embedding matrix.
 
+    This method performs  a number of iterations with a fixed parameter configuration.
+
+    :param deep_re_graph_object: The DeepReGraph object that is going to drive the optimization.
+    :param L:  The number of optimization iterations to perform. Default value: 10.
+    :param init_sparsity:   The initial value of the sparsity parameter. Default value: 200.
+    :param sparsity_increment:  The iteration-wise increment of the sparsity parameter. Default value: 40.
+    :param omega_BP:  parametric importance weight of the base-pair proximity information according to equation (14) in the paper. Default value: 0.
+    :param alpha_G: the importance weight of the gene-expression feature space distances according to equation (11) in the paper. Default value: 1.
+    :param alpha_ATAC: the importance weight of the ATAC feature space distances according to equation (11) in the paper. Default value: 1.
+    :param alpha_ACET: the importance weight of the H3K27-AC feature space distances according to equation (11) in the paper. Default value: 1.
+    :param alpha_METH: the importance weight of the H3K27ME3 feature space distances according to equation (11) in the paper. Default value: 1.
+    :param alpha_Z: the importance weight of the previous-iteration embedding distances according to equation (13) in the paper. Default value: 0
+    :param attractive_loss_weight: importance weight for the attractive term in the loss function, psi_A in equation (15). Default value: 0.1
+    :param repulsive_loss_weight: importance weight for the repulsive term in the loss function, psi_B in equation (15). Default value: 1
+    :param omega_ATAC: importance weight for the ATAC slopes in the trend-aware score according to equation (2). Default value: 1
+    :param omega_ACET: importance weight for the ACET slopes in the trend-aware score according to equation (2). Default value: 0
+    :param omega_METH: importance weight for the METH slopes in the trend-aware score according to equation (2). Default value: 0
+    :param max_iter: Maximun number of gradient descent iterations for each optimization operation. . Default value: 15.
+    :param plot_size: Predefined plot size for the embedding plot at each iteration. Default value: 15
+    :param legend: Specifies if plots should include the legend with the parameter configuation. . Default value: True.
+
+    '''
     current_sparsity = init_sparsity
     epoch=0
-    gae.iteration = 0
+    deep_re_graph_object.iteration = 0
 
-    while epoch < max_epoch:
+    while epoch < L:
 
         epoch += 1
 
-        T = max_epoch * max_iter
+        T = L * max_iter
 
         current_sparsity += sparsity_increment
 
+        current_lambda_attractive = 0.5
+        current_lambda_repulsive = 0.5
 
-        current_lambda_attractive = gae.get_dinamic_param(init_lambda_attractive,
-                                                         final_lambda_attractive, T)
-
-        current_lambda_repulsive = gae.get_dinamic_param(init_lambda_repulsive,
-                                                        final_lambda_repulsive, T)
-
-        gae.epoch_losses = []
+        deep_re_graph_object.epoch_losses = []
 
         for i in range(max_iter):
 
             dummy_action = torch.Tensor([current_sparsity,
-                                         alpha_D,
+                                         omega_BP,
                                          attractive_loss_weight,
                                          current_lambda_attractive,
                                          repulsive_loss_weight,
@@ -2091,47 +2133,34 @@ def manual_run(gae,
                                          alpha_Z,
                                          omega_ATAC,
                                          omega_ACET,
-                                         omega_METH]).to(gae.device)
+                                         omega_METH]).to(deep_re_graph_object.device)
 
-            loss = gae.step(dummy_action)
+            loss = deep_re_graph_object.step(dummy_action)
 
-            gae.epoch_losses.append(loss.item())
+            deep_re_graph_object.epoch_losses.append(loss.item())
 
         # mean_loss = sum(gae.epoch_losses) / len(gae.epoch_losses)
         # reward = gae.evaluate()
 
-        title = 'epoch: '+ str(epoch)+ \
-                ' Attr: ' + str(gae.current_attractive_loss_weight) + \
-                ' Rep: ' + str(gae.current_repulsive_loss_weight) + \
-                ' spars: ' + str(gae.current_sparsity) + \
-                ' curr_clust_num: ' + str(gae.current_cluster_number) + \
-                '\nalphaD: ' + str(gae.alpha_D) + \
-                ' alpha_G: '+ str(gae.alpha_G) + ' alpha_ATAC: ' +str(gae.alpha_ATAC) + \
-                ' alpha_ACET: ' + str(gae.alpha_ACET) + ' alpha_METH: ' + str(gae.alpha_METH) + \
-                ' alpha_Z: ' + str(gae.alpha_Z) + \
-                '\nwkATAC: ' + str(gae.wk_ATAC) + \
-                ' wkACET: ' + str(gae.wk_ACET) + \
-                ' wkMETH: ' + str(gae.wk_METH)
+        title = 'epoch: ' + str(epoch) + \
+                ' Attractive: ' + str(deep_re_graph_object.current_attractive_loss_weight) + \
+                ' Repulsive: ' + str(deep_re_graph_object.current_repulsive_loss_weight) + \
+                ' Sparsity: ' + str(deep_re_graph_object.current_sparsity) + \
+                ' curr_clust_num: ' + str(deep_re_graph_object.current_cluster_number) + \
+                '\nomega_BP: ' + str(deep_re_graph_object.omega_BP) + \
+                ' alpha_G: ' + str(deep_re_graph_object.alpha_G) + ' alpha_ATAC: ' + str(deep_re_graph_object.alpha_ATAC) + \
+                ' alpha_ACET: ' + str(deep_re_graph_object.alpha_ACET) + ' alpha_METH: ' + str(deep_re_graph_object.alpha_METH) + \
+                ' alpha_Z: ' + str(deep_re_graph_object.alpha_Z) + \
+                '\nomega_ATAC: ' + str(deep_re_graph_object.wk_ATAC) + \
+                ' omega_ACET: ' + str(deep_re_graph_object.wk_ACET) + \
+                ' omega_METH: ' + str(deep_re_graph_object.wk_METH)
         print(title)
 
-        if gae.layers[-1] > 2:
+        if deep_re_graph_object.layers[-1] > 2:
           if epoch%10==0:
-            gae.plot_graph()
+            deep_re_graph_object.plot_graph()
         else:
-          gae.plot_graph(title=title, size=plot_size,legend=legend)
+          deep_re_graph_object.plot_graph(title=title, size=plot_size, legend=legend)
 
-    print('gae.current_cluster_number', gae.current_cluster_number)
+    print('automatic cluster number suggestion', deep_re_graph_object.current_cluster_number)
 
-
-
-def adagae_run(action_index, actions_array, adagae_object, curr_sparsity):
-
-  curr_action = actions_array[action_index]
-  print('Curr_action: [GBF: ',curr_action[0], ', ATTR: ',curr_action[1], ', REP: ', curr_action[2], ']')
-  adagae_object.run_1_epoch(current_sparsity = curr_sparsity,
-                            alpha_D= curr_action[0],
-                            attractive_loss_weight = curr_action[1],
-                            repulsive_loss_weight = curr_action[2],
-                            )
-  adagae_object.plot_classes()
-  return adagae_object.evaluate()
