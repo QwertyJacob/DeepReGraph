@@ -2,7 +2,7 @@
 ____
 
 Code for the paper: 
-*"DeepReGraph   sheds   light   on   embryonic   regulatorymechanisms through Deep Heterogeneous Graph Rep-resentation Learning"*
+*"DeepReGraph co-clusters Temporal Gene Expression and Cis-Regulatory Elements through Deep Heterogeneous Graph Representation Learning"*
 
 ## Usage:
 ___
