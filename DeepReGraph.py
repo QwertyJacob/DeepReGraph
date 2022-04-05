@@ -1,8 +1,23 @@
 '''
-The following code is a modified version of the code available at https://github.com/hyzhang98/AdaGAE
+Copyright 2022 Jesús Cevallos
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+ http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+
+The following code constains parts of the code available at https://github.com/hyzhang98/AdaGAE
 which is an implementation of the paper "Adaptive Graph Auto-Encoder for General Data Clustering"
 available at https://ieeexplore.ieee.org/document/9606581
-Modifications were made by Jesus Cevallos to adapt to the application problem.
+Some parts of the code were modified by Jesús Cevallos to implement the DeepReGraph Algorithm.
 '''
 
 import torch
